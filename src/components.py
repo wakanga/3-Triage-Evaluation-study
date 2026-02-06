@@ -22,10 +22,10 @@ def render_patient_card(patient):
         if pd.isna(avatar_file):
             avatar_file = "default.png"
         image = load_image(avatar_file)
-        st.image(image, use_column_width=True)
+        st.image(image, use_container_width=True)
 
     with col2:
-        st.subheader(f"Patient ID: {patient['ID']}")
+        st.subheader(f"Patient ID: {patient['ID']} | {patient.get('Patient_Name', '')}")
         st.markdown(f"**Scenario:** {patient['Scenario']}")
         st.info(patient['Visible_Text'])
 

@@ -43,7 +43,7 @@ def validate_content_pack(sheets):
         st.stop()
 
     # 3. Validate Patients Tab
-    required_patient_cols = {"ID", "Scenario", "Is_Tutorial", "Visible_Text", "Gold_Standard_Normalized"}
+    required_patient_cols = {"ID", "Scenario", "Is_Tutorial", "Visible_Text", "Gold_Standard_Normalized", "Patient_Name"}
     if not required_patient_cols.issubset(sheets["Patients"].columns):
         st.error(f"Patients tab missing columns. Required: {required_patient_cols}")
         st.stop()
