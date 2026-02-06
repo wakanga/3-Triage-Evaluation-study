@@ -3,7 +3,7 @@ import os
 import pandas as pd
 from PIL import Image
 import time
-from src.engine import log_event
+from src.engine import log_event, save_session_state
 
 def load_image(filename):
     """Loads an image from assets/img, falling back to default.png."""
@@ -27,7 +27,10 @@ def render_patient_card(patient):
     with col2:
         st.subheader(f"Patient ID: {patient['ID']} | {patient.get('Patient_Name', '')}")
         st.markdown(f"**Scenario:** {patient['Scenario']}")
-        st.info(patient['Visible_Text'])
+        visible_text = patient.get("Visible_Text")
+        if pd.isna(visible_text) or visible_text is None:
+            visible_text = "No visible findings recorded."
+        st.info(visible_text)
 
         # Render Fog of War Information
         st.markdown("### Clinical Findings")
@@ -81,6 +84,7 @@ def render_action_buttons(patient, config_df):
                 st.session_state.revealed_actions.add(key)
                 st.session_state.accumulated_cost_ms += cost
                 log_event(event_type="reveal", action_key=key)
+                save_session_state()
                 st.rerun()
 
 def render_triage_tools(tools_df, tool_id):
@@ -128,6 +132,7 @@ def render_triage_tools(tools_df, tool_id):
                 # But standard Streamlit way: update state and rerun.
 
                 st.session_state.last_decision = "made" # Flag to trigger transition
+                save_session_state()
                 st.rerun()
 
 def render_washout(duration_seconds=15):

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import time
+from datetime import datetime
 from src import utils, engine, components
 
 # Set Page Config
@@ -25,11 +26,14 @@ def main():
         # Validate
         utils.validate_content_pack(sheets)
 
-        # Initialize Engine
-        engine.initialize_session(sheets, content_hash)
+        # Try Resume or Initialize
+        resumed = engine.try_resume_session(sheets, content_hash)
+        if not resumed:
+            engine.initialize_session(sheets, content_hash)
+            engine.generate_patient_queue()
+            engine.save_session_state()
 
-        # Generate Queue
-        engine.generate_patient_queue()
+        engine.ensure_query_param()
 
     # 2. Check for "Withdraw" (Footer/Sidebar)
     with st.sidebar:
@@ -38,6 +42,7 @@ def main():
         if st.button("Withdraw & Delete Session", type="primary"):
             if os.path.exists(st.session_state.log_filepath):
                 os.remove(st.session_state.log_filepath)
+            engine.delete_session_state()
             st.warning("Session withdrawn and log deleted.")
             st.stop()
 
@@ -67,13 +72,16 @@ def main():
                (prev_patient["Scenario"] != "Tutorial") and \
                (curr_patient["Scenario"] != "Tutorial"):
                 st.session_state.washout_active = True
-                st.session_state.washout_start_time = time.time()
+                st.session_state.washout_start_time = datetime.now()
+                st.session_state.card_start_time = None
+                st.session_state.accumulated_cost_ms = 0
+                engine.save_session_state()
                 # Do NOT start new patient yet. Wait for washout to finish.
             else:
                 engine.start_new_patient()
         else:
             # End of queue
-            pass
+            engine.save_session_state()
 
         st.rerun()
 
@@ -103,6 +111,7 @@ def main():
                 st.session_state.fatigue_status = fatigue
                 st.session_state.tool_id = tool_id
                 st.session_state.onboarding_complete = True
+                engine.save_session_state()
                 engine.start_new_patient()
                 st.rerun()
         return
@@ -111,6 +120,7 @@ def main():
     if st.session_state.washout_active:
         components.render_washout()
         st.session_state.washout_active = False
+        engine.save_session_state()
         engine.start_new_patient() # Now start the patient timer
         st.rerun()
         return
