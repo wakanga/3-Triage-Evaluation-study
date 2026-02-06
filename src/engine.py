@@ -39,6 +39,36 @@ def _dt_to_iso(dt):
 def _dt_from_iso(value):
     return datetime.fromisoformat(value) if value else None
 
+def get_investigation_result(patient_row, action_key):
+    """
+    Returns the text result for an action.
+    If the Excel cell is empty/NaN, returns the clinical default.
+    """
+    # 1. Get the raw value from the patient row
+    # Note: Column names are usually "{action_key}_Text"
+    # But let's check if the patient_row key exists directly or we need to append _Text
+    # The structure in render_patient_card implies keys are like 'walk_Text'
+    
+    col_name = f"{action_key}_Text"
+    raw_text = patient_row.get(col_name)
+    
+    # 2. Check if it is valid (not empty/NaN)
+    if pd.notna(raw_text) and str(raw_text).strip() != "":
+        return str(raw_text)
+    
+    # 3. If empty, return Defaults based on Key
+    defaults = {
+        'temp': "Normothermic",
+        'history': "History is as given",
+        'bp': "Hemodynamically Stable",
+        'pain': "Pain Score: Unknown/Unable to elicit",
+        'spo2': "SpO2: >94% on room air",
+        'pupils': "Pupils Equal and Reactive",
+        'bsl': "BSL: 5.5 mmol/L"
+    }
+    
+    return defaults.get(action_key, "No specific abnormality detected.")
+
 def build_patient_map():
     df_patients = st.session_state.content_pack["Patients"]
     records = df_patients.to_dict("records")

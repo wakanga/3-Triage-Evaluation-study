@@ -89,10 +89,11 @@ def main():
     if not st.session_state.onboarding_complete:
         st.title("Triage Study: Onboarding")
 
+
         with st.form("onboarding_form"):
-            role = st.selectbox("Role", ["Paramedic", "Nurse", "Doctor", "Police", "Fire/Rescue", "Student/Other"])
-            years = st.selectbox("Years Experience", ["0-2 years", "2-5 years", "5-10 years", "10+ years"])
-            fatigue = st.selectbox("Fatigue Status", ["On Shift (Currently working)", "Off Shift (<12 hours since last shift)", "Rested (>12 hours since last shift)"])
+            role = st.selectbox("Role", ["-- Click here --", "Paramedic", "Nurse", "Doctor", "Police", "Fire/Rescue", "Student/Other"])
+            years = st.selectbox("Years Experience", ["-- Click here --", "0-2 years", "2-5 years", "5-10 years", "10+ years"])
+            fatigue = st.selectbox("Fatigue Status", ["-- Click here --", "On Shift (Currently working)", "Off Shift (<12 hours since last shift)", "Rested (>12 hours since last shift)"])
 
             # Tool Selection (Implicitly defined? Or User selects?
             # README says: "Triage Decision: User sees buttons defined in the Tools Excel tab for their assigned tool."
@@ -102,18 +103,59 @@ def main():
             # "Triage Decision: User sees buttons defined in the Tools Excel tab for their assigned tool."
             # I will add a dropdown for Tool ID for now, as it's critical.
 
-            tool_id = st.selectbox("Assigned Tool", ["ATS", "SMART", "10S"])
+            tool_id = st.selectbox("Assigned Tool", ["-- Click here --", "ATS", "SMART", "10S"])
 
             submitted = st.form_submit_button("Start Study")
             if submitted:
-                st.session_state.participant_role = role
-                st.session_state.years_exp = years
-                st.session_state.fatigue_status = fatigue
-                st.session_state.tool_id = tool_id
+                # Validate that all fields were selected (not placeholder)
+                if role == "-- Click here --" or years == "-- Click here --" or fatigue == "-- Click here --" or tool_id == "-- Click here --":
+                    st.error("Please select an option for all fields before proceeding.")
+                else:
+                    st.session_state.participant_role = role
+                    st.session_state.years_exp = years
+                    st.session_state.fatigue_status = fatigue
+                    st.session_state.tool_id = tool_id
+                    st.session_state.onboarding_complete = True
+                    engine.save_session_state()
+                    engine.start_new_patient()
+                    st.rerun()
+
+        # --- Test Mode: Rapid Onboarding ---
+        st.divider()
+        st.subheader("Rapid Entry")
+        rc1, rc2, rc3 = st.columns(3)
+        with rc1:
+            if st.button("⚡ Rapid ATS", type="primary"):
+                st.session_state.participant_role = "Paramedic"
+                st.session_state.years_exp = "5-10 years"
+                st.session_state.fatigue_status = "Rested"
+                st.session_state.tool_id = "ATS"
                 st.session_state.onboarding_complete = True
                 engine.save_session_state()
                 engine.start_new_patient()
                 st.rerun()
+        with rc2:
+            if st.button("⚡ Rapid SMART", type="primary"):
+                st.session_state.participant_role = "Paramedic"
+                st.session_state.years_exp = "5-10 years"
+                st.session_state.fatigue_status = "Rested"
+                st.session_state.tool_id = "SMART"
+                st.session_state.onboarding_complete = True
+                engine.save_session_state()
+                engine.start_new_patient()
+                st.rerun()
+        with rc3:
+            if st.button("⚡ Rapid 10S", type="primary"):
+                st.session_state.participant_role = "Paramedic"
+                st.session_state.years_exp = "5-10 years"
+                st.session_state.fatigue_status = "Rested"
+                st.session_state.tool_id = "10S"
+                st.session_state.onboarding_complete = True
+                engine.save_session_state()
+                engine.start_new_patient()
+                st.rerun()
+        # -----------------------------------
+
         return
 
     # 5. Phase 4: Washout (Active?)
@@ -133,12 +175,56 @@ def main():
         st.progress((st.session_state.current_patient_index) / len(st.session_state.patient_queue))
         st.caption(f"Patient {st.session_state.current_patient_index + 1} / {len(st.session_state.patient_queue)}")
 
-        # Render
-        components.render_patient_card(patient)
-        st.divider()
-        components.render_action_buttons(patient, st.session_state.content_pack["Config"])
-        st.divider()
-        components.render_triage_tools(st.session_state.content_pack["Tools"], st.session_state.tool_id)
+        # Custom CSS for HUD Layout - COMPREHENSIVE SPACING COLLAPSE
+        st.markdown(
+            """
+            <style>
+            /* ===== HUD STYLING ===== */
+            
+            /* Right Column (Col 2): The Sticky HUD */
+            [data-testid="stColumn"]:nth-of-type(2) > div {
+                position: sticky;
+                top: 1rem;
+                height: 95vh;
+                overflow-y: auto;
+                padding-right: 5px;
+                background-color: transparent;
+            }
+
+            /* Ensure Image in HUD scales nicely */
+            [data-testid="stColumn"]:nth-of-type(2) img {
+                max-height: 25vh;
+                object-fit: contain;
+                width: auto;
+                display: block;
+                margin-left: auto;
+                margin-right: auto;
+                margin-bottom: 1rem;
+            }
+            
+
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Render HUd Layout (2 Columns)
+        # Left: Workspace (Actions)
+        # Right: HUD (Context + Decisions)
+        c_left, c_right = st.columns([0.65, 0.35], gap="large")
+
+        with c_left:
+            components.render_patient_header(patient)
+            st.divider()
+            components.render_action_buttons(patient, st.session_state.content_pack["Config"])
+        
+        with c_right:
+            # HUD Stack
+            components.render_patient_avatar(patient)
+            st.divider()
+            components.render_clinical_findings(patient)
+            st.divider()
+            components.render_triage_tools(st.session_state.content_pack["Tools"], st.session_state.tool_id)
 
     else:
         # Phase 5: Completion

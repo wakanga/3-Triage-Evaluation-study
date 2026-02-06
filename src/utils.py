@@ -41,7 +41,7 @@ def validate_content_pack(sheets):
     if not required_tools_cols.issubset(sheets["Tools"].columns):
         st.error(f"Tools tab missing columns. Required: {required_tools_cols}")
         st.stop()
-    allowed_colors = {"Red", "Yellow", "Green", "Black"}
+    allowed_colors = {"Red", "Yellow", "Green", "Black", "White", "Blue", "Orange"}
     tool_colors = set(sheets["Tools"]["Normalized_Value"].dropna().unique())
     invalid_colors = tool_colors - allowed_colors
     if invalid_colors:
@@ -49,7 +49,7 @@ def validate_content_pack(sheets):
         st.stop()
 
     # 3. Validate Patients Tab
-    required_patient_cols = {"ID", "Scenario", "Is_Tutorial", "Visible_Text", "Gold_Standard_Normalized", "Patient_Name"}
+    required_patient_cols = {"ID", "Scenario", "Is_Tutorial", "Gold_Standard_Normalized", "Patient_Name"}
     if not required_patient_cols.issubset(sheets["Patients"].columns):
         st.error(f"Patients tab missing columns. Required: {required_patient_cols}")
         st.stop()
@@ -58,21 +58,4 @@ def validate_content_pack(sheets):
     if invalid_patient_colors:
         st.error(f"Patients tab has invalid Gold_Standard_Normalized entries: {invalid_patient_colors}. Allowed: {allowed_colors}")
         st.stop()
-
-    # Check that _Text columns in Patients match Action_Keys in Config
-    action_keys = sheets["Config"]["Action_Key"].tolist()
-    patient_cols = sheets["Patients"].columns
-
-    for key in action_keys:
-        if key == "visual": continue # implicit
-        text_col = f"{key}_Text"
-        if text_col not in patient_cols:
-             st.error(f"Missing column '{text_col}' in Patients tab (required by Action_Key '{key}').")
-             st.stop()
-
-    # Check default asset exists
-    if not os.path.exists("assets/img/default.png"):
-        st.error("Missing critical asset: assets/img/default.png")
-        st.stop()
-
     return True
