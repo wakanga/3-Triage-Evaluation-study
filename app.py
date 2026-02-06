@@ -71,12 +71,32 @@ def main():
             if (prev_patient["Scenario"] != curr_patient["Scenario"]) and \
                (prev_patient["Scenario"] != "Tutorial") and \
                (curr_patient["Scenario"] != "Tutorial"):
-                st.session_state.washout_active = True
-                st.session_state.washout_start_time = datetime.now()
-                st.session_state.card_start_time = None
-                st.session_state.accumulated_cost_ms = 0
-                engine.save_session_state()
-                # Do NOT start new patient yet. Wait for washout to finish.
+                
+                # SUPPRESS FOR TUTORIAL SCENARIOS
+                # If the COMPLETED scenario was a tutorial (Is_Tutorial=True), skip NASA TLX.
+                # However, the user said "during the tutorial cases when swithcing between scenarios".
+                # If I have multiple tutorials, I don't want NASA TLX.
+                # If I switch FROM tutorial TO real scenario, I probably don't want NASA TLX for the tutorial.
+                
+                # Check if the JUST FINISHED scenario was a tutorial
+                # prev_patient is the last one of the block we just finished.
+                is_prev_tutorial = prev_patient.get("Is_Tutorial", False)
+                
+                if not is_prev_tutorial:
+                    # TRIGGER NASA-TLX FIRST
+                    st.session_state.nasa_tlx_active = True
+                    st.session_state.last_finished_scenario = prev_patient["Scenario"]
+                
+                    # THEN PREPARE WASHOUT
+                    st.session_state.washout_active = True
+                    st.session_state.washout_start_time = datetime.now()
+                    st.session_state.card_start_time = None
+                    st.session_state.accumulated_cost_ms = 0
+                    engine.save_session_state()
+                else:
+                    # If it WAS a tutorial, skip NASA TLX AND skip Washout.
+                    # Just go straight to the next patient.
+                    engine.start_new_patient()
             else:
                 engine.start_new_patient()
         else:
@@ -158,7 +178,12 @@ def main():
 
         return
 
-    # 5. Phase 4: Washout (Active?)
+    # Phase 4a: NASA-TLX (Before Washout)
+    if st.session_state.get("nasa_tlx_active", False):
+        components.render_nasa_tlx()
+        return
+
+    # 5. Phase 4b: Washout (Active?)
     if st.session_state.washout_active:
         components.render_washout()
         st.session_state.washout_active = False
@@ -175,93 +200,38 @@ def main():
         st.progress((st.session_state.current_patient_index) / len(st.session_state.patient_queue))
         st.caption(f"Patient {st.session_state.current_patient_index + 1} / {len(st.session_state.patient_queue)}")
 
-        # Custom CSS for HUD Layout - COMPREHENSIVE SPACING COLLAPSE
-        st.markdown(
-            """
-            <style>
-            /* ===== HUD STYLING ===== */
+        if "header_sticky" not in st.session_state:
+            st.session_state.header_sticky = False
+
+        # Custom CSS for HUD Layout
+        components.inject_custom_css()
+
+        # === HEADER LAYOUT (Unified) ===
+        with st.container():
+            c_patient, c_triage = st.columns([0.65, 0.35], gap="large")
             
-            /* Right Column (Col 3 ONLY): Floating Fixed Bar */
-            [data-testid="stColumn"]:nth-of-type(3) {
-                position: fixed !important;
-                top: 5rem !important;
-                right: 1.5rem !important;
-                width: 18vw !important; /* Approx 20% of screen width */
-                height: 85vh !important;
-                z-index: 1000 !important;
-                /* Optional: Add background to prevent see-through overlap */
-                background-color: transparent !important; 
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-            }
+            # 1. Patient Section (Left)
+            with c_patient:
+                # Avatar Left | Info Right
+                c_avatar, c_info = st.columns([0.25, 0.75], gap="small")
+                with c_avatar:
+                    components.render_patient_avatar(patient)
+                with c_info:
+                    components.render_patient_info(patient)
 
-            /* Prevent Mid Column (Findings) from overlapping the Fixed Bar */
-            [data-testid="stColumn"]:nth-of-type(2) {
-                margin-right: 20vw !important; /* Reserve space for the fixed bar */
-            }
-
-            /* Compact Triage Buttons in 3rd Column */
-            [data-testid="stColumn"]:nth-of-type(3) button {
-                padding: 0.2rem 0.5rem !important; /* Thinner blocks */
-                /* font-size: 0.85rem !important;  <-- REMOVED per user request for normal text */
-                min-height: 0px !important;
-                height: auto !important;
-                margin-top: 0.2rem !important;
-                margin-bottom: 0px !important;
-                line-height: normal !important; /* Normal text height */
-            }
-            
-            [data-testid="stColumn"]:nth-of-type(3) p {
-                /* font-size: 0.8rem !important; REMOVED */
-                margin-bottom: 0.2rem !important;
-            }
-            
-            [data-testid="stColumn"]:nth-of-type(3) h3 {
-                /* font-size: 1rem !important; REMOVED */
-                margin-bottom: 0.5rem !important;
-                margin-top: 0.5rem !important;
-            }
-
-            /* Ensure Image in HUD scales nicely */
-            [data-testid="stColumn"]:nth-of-type(3) img {
-                max-height: 40vh; /* Increased size */
-                object-fit: contain;
-                width: 100%; /* Full width */
-                display: block;
-                padding: 0px !important;
-                margin-bottom: 0px !important; /* Tightest possible */
-            }
-            
-            /* Tighten Triage Decision Header just for Col 3 */
-            [data-testid="stColumn"]:nth-of-type(3) h3 {
-                margin-top: 0.2rem !important; 
-                margin-bottom: 0.5rem !important;
-                font-size: 1rem !important;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # Render HUD Layout (3 Columns)
-        # Left: Actions (A-E)
-        # Mid: Clinical Findings (Results)
-        # Right: Triage Decision + Context
-        c_left, c_mid, c_right = st.columns([0.4, 0.35, 0.25], gap="medium")
-
-        with c_left:
-            components.render_patient_header(patient)
-            st.divider()
-            st.markdown("### Actions")
-            components.render_action_buttons(patient, st.session_state.content_pack["Config"])
+            # 2. Triage Section (Right)
+            with c_triage:
+                st.markdown("#### Decision")
+                # Render Tools
+                components.render_triage_tools(st.session_state.content_pack["Tools"], st.session_state.tool_id)
         
-        with c_mid:
-            components.render_clinical_findings(patient)
-
-        with c_right:
-            components.render_patient_avatar(patient)
-            components.render_triage_tools(st.session_state.content_pack["Tools"], st.session_state.tool_id)
+        st.divider()
+        
+        # === ACTION GRID (Full Width) ===
+        st.markdown("### Actions")
+        components.render_action_buttons(patient, st.session_state.content_pack["Config"])
+        
+        # Sidebar Removed completely from this view.
 
     else:
         # Phase 5: Completion

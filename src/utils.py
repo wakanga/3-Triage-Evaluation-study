@@ -49,13 +49,9 @@ def validate_content_pack(sheets):
         st.stop()
 
     # 3. Validate Patients Tab
-    required_patient_cols = {"ID", "Scenario", "Is_Tutorial", "Gold_Standard_Normalized", "Patient_Name"}
+    # 3. Validate Patients Tab
+    required_patient_cols = {"ID", "Scenario", "Is_Tutorial", "Patient_Name"}
     if not required_patient_cols.issubset(sheets["Patients"].columns):
         st.error(f"Patients tab missing columns. Required: {required_patient_cols}")
-        st.stop()
-    patient_colors = set(sheets["Patients"]["Gold_Standard_Normalized"].dropna().unique())
-    invalid_patient_colors = patient_colors - allowed_colors
-    if invalid_patient_colors:
-        st.error(f"Patients tab has invalid Gold_Standard_Normalized entries: {invalid_patient_colors}. Allowed: {allowed_colors}")
         st.stop()
     return True
