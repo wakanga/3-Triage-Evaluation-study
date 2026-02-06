@@ -13,9 +13,17 @@ def load_image(filename):
     return Image.open(path)
 
 def render_patient_header(patient):
+    """Renders the patient header with clear hierarchy: Name > ID > Scenario."""
     """Renders the patient textual info (ID, Name, Scenario, Description)."""
-    st.subheader(f"Patient ID: {patient['ID']} | {patient.get('Patient_Name', '')}")
+    # 1. Name (Top, Large)
+    st.markdown(f"## {patient.get('Patient_Name', 'Unknown')}")
+    
+    # 2. ID (Middle, Sized like H3/4)
+    st.markdown(f"#### Patient ID: {patient['ID']}")
+    
+    # 3. Scenario (Bottom)
     st.markdown(f"**Scenario:** {patient['Scenario']}")
+    
     visible_text = patient.get("Visible_Text")
     if pd.isna(visible_text) or visible_text is None:
         visible_text = "No visible findings recorded."

@@ -181,15 +181,46 @@ def main():
             <style>
             /* ===== HUD STYLING ===== */
             
-            /* Right Columns (Col 2 & 3): Sticky HUD Elements */
-            [data-testid="stColumn"]:nth-of-type(2) > div,
-            [data-testid="stColumn"]:nth-of-type(3) > div {
-                position: sticky;
-                top: 1rem;
-                height: 95vh;
-                overflow-y: auto;
-                padding-right: 5px;
-                background-color: transparent;
+            /* Right Column (Col 3 ONLY): Floating Fixed Bar */
+            [data-testid="stColumn"]:nth-of-type(3) {
+                position: fixed !important;
+                top: 5rem !important;
+                right: 1.5rem !important;
+                width: 18vw !important; /* Approx 20% of screen width */
+                height: 85vh !important;
+                z-index: 1000 !important;
+                /* Optional: Add background to prevent see-through overlap */
+                background-color: transparent !important; 
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+            }
+
+            /* Prevent Mid Column (Findings) from overlapping the Fixed Bar */
+            [data-testid="stColumn"]:nth-of-type(2) {
+                margin-right: 20vw !important; /* Reserve space for the fixed bar */
+            }
+
+            /* Compact Triage Buttons in 3rd Column */
+            [data-testid="stColumn"]:nth-of-type(3) button {
+                padding: 0.2rem 0.5rem !important; /* Thinner blocks */
+                /* font-size: 0.85rem !important;  <-- REMOVED per user request for normal text */
+                min-height: 0px !important;
+                height: auto !important;
+                margin-top: 0.2rem !important;
+                margin-bottom: 0px !important;
+                line-height: normal !important; /* Normal text height */
+            }
+            
+            [data-testid="stColumn"]:nth-of-type(3) p {
+                /* font-size: 0.8rem !important; REMOVED */
+                margin-bottom: 0.2rem !important;
+            }
+            
+            [data-testid="stColumn"]:nth-of-type(3) h3 {
+                /* font-size: 1rem !important; REMOVED */
+                margin-bottom: 0.5rem !important;
+                margin-top: 0.5rem !important;
             }
 
             /* Ensure Image in HUD scales nicely */
@@ -199,7 +230,14 @@ def main():
                 width: 100%; /* Full width */
                 display: block;
                 padding: 0px !important;
-                margin-bottom: 0.5rem;
+                margin-bottom: 0px !important; /* Tightest possible */
+            }
+            
+            /* Tighten Triage Decision Header just for Col 3 */
+            [data-testid="stColumn"]:nth-of-type(3) h3 {
+                margin-top: 0.2rem !important; 
+                margin-bottom: 0.5rem !important;
+                font-size: 1rem !important;
             }
             </style>
             """,
@@ -210,7 +248,7 @@ def main():
         # Left: Actions (A-E)
         # Mid: Clinical Findings (Results)
         # Right: Triage Decision + Context
-        c_left, c_mid, c_right = st.columns([0.4, 0.4, 0.2], gap="medium")
+        c_left, c_mid, c_right = st.columns([0.4, 0.35, 0.25], gap="medium")
 
         with c_left:
             components.render_patient_header(patient)
@@ -223,7 +261,6 @@ def main():
 
         with c_right:
             components.render_patient_avatar(patient)
-            st.divider()
             components.render_triage_tools(st.session_state.content_pack["Tools"], st.session_state.tool_id)
 
     else:
