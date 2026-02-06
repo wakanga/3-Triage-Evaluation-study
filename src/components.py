@@ -32,7 +32,7 @@ def render_patient_avatar(patient):
 
 def render_clinical_findings(patient):
     """Renders the revealed clinical findings in a clean list style with minimal spacing."""
-    st.markdown("### Clinical Findings")
+    st.markdown("### Findings")
     if not st.session_state.revealed_actions:
         st.caption("No findings yet.")
         return
@@ -175,8 +175,8 @@ def _render_single_button_vertical(row):
     # Optional: Add checkmark to show it's active
     display_label = f"✓ {label}" if is_revealed else label
     
-    # Use full width buttons for a cleaner vertical menu look
-    if st.button(display_label, key=f"btn_{key}", type=btn_type, use_container_width=True):
+    # Use standard buttons (not container width) for a 'narrower' look
+    if st.button(display_label, key=f"btn_{key}", type=btn_type):
         if is_revealed:
             st.session_state.revealed_actions.remove(key)
             log_event(event_type="hide", action_key=key)

@@ -181,8 +181,9 @@ def main():
             <style>
             /* ===== HUD STYLING ===== */
             
-            /* Right Column (Col 2): The Sticky HUD */
-            [data-testid="stColumn"]:nth-of-type(2) > div {
+            /* Right Columns (Col 2 & 3): Sticky HUD Elements */
+            [data-testid="stColumn"]:nth-of-type(2) > div,
+            [data-testid="stColumn"]:nth-of-type(3) > div {
                 position: sticky;
                 top: 1rem;
                 height: 95vh;
@@ -192,37 +193,36 @@ def main():
             }
 
             /* Ensure Image in HUD scales nicely */
-            [data-testid="stColumn"]:nth-of-type(2) img {
-                max-height: 25vh;
+            [data-testid="stColumn"]:nth-of-type(3) img {
+                max-height: 40vh; /* Increased size */
                 object-fit: contain;
-                width: auto;
+                width: 100%; /* Full width */
                 display: block;
-                margin-left: auto;
-                margin-right: auto;
-                margin-bottom: 1rem;
+                padding: 0px !important;
+                margin-bottom: 0.5rem;
             }
-            
-
             </style>
             """,
             unsafe_allow_html=True
         )
 
-        # Render HUd Layout (2 Columns)
-        # Left: Workspace (Actions)
-        # Right: HUD (Context + Decisions)
-        c_left, c_right = st.columns([0.65, 0.35], gap="large")
+        # Render HUD Layout (3 Columns)
+        # Left: Actions (A-E)
+        # Mid: Clinical Findings (Results)
+        # Right: Triage Decision + Context
+        c_left, c_mid, c_right = st.columns([0.4, 0.4, 0.2], gap="medium")
 
         with c_left:
             components.render_patient_header(patient)
             st.divider()
+            st.markdown("### Actions")
             components.render_action_buttons(patient, st.session_state.content_pack["Config"])
         
-        with c_right:
-            # HUD Stack
-            components.render_patient_avatar(patient)
-            st.divider()
+        with c_mid:
             components.render_clinical_findings(patient)
+
+        with c_right:
+            components.render_patient_avatar(patient)
             st.divider()
             components.render_triage_tools(st.session_state.content_pack["Tools"], st.session_state.tool_id)
 
