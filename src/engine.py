@@ -83,7 +83,7 @@ def delete_session_state():
         os.remove(path)
 
 def try_resume_session(content_pack, content_hash):
-    params = st.experimental_get_query_params()
+    params = st.query_params
     session_id = None
     if "sid" in params and params["sid"]:
         session_id = params["sid"][0]
@@ -141,7 +141,7 @@ def try_resume_session(content_pack, content_hash):
 
 def ensure_query_param():
     if "session_id" in st.session_state:
-        st.experimental_set_query_params(sid=st.session_state.session_id)
+        st.query_params["sid"] = st.session_state.session_id
 
 def initialize_session(content_pack, content_hash):
     """Initializes the session state if not already present."""
