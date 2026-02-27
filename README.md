@@ -1,6 +1,8 @@
-# Cognitive Load Triage Evaluation Platform
+# Standardised Triage Evaluation Platform (STEP)
 
-A Streamlit-based research app that simulates mass-casualty triage under "fog of war" conditions. It compares triage systems (e.g., ATS, SMART, 10-Second Triage) by capturing decision speed (real time) and information cost (simulated clinical time).
+A Streamlit-based research app that simulates mass-casualty triage under "fog of war" conditions. It compares triage systems (e.g., SMART, TST) by capturing decision speed (real time) and information cost (simulated clinical time).
+
+> **See [FEATURES.md](FEATURES.md)** for a detailed exposé of current capabilities and a workspace for planning new features.
 
 ## Highlights
 - **Fog of War**: Clinical findings are hidden until "purchased" with simulated time.
@@ -43,13 +45,13 @@ Columns:
 - `Button_Label`: Text displayed on the button.
 - `Cost_ms`: Simulated time cost in milliseconds.
 - `Category`: Grouping for the UI (Must be: `A`, `B`, `C`, `D`, or `E`).
-- `Valid_Tools`: Comma-separated list of Tool IDs that allow this action (e.g., `ATS,SMART`).
+- `Valid_Tools`: Comma-separated list of Tool IDs that allow this action (e.g., `SMART,TST`).
 
 ### Tools tab
 Defines the triage algorithms/tools available.
 Columns:
-- `Tool_ID`: Unique ID (e.g., `ATS`, `SMART`).
-- `Button_Label`: Text for the final decision button (e.g., `Cat 1 (Immediate)`).
+- `Tool_ID`: Unique ID (e.g., `SMART`, `TST`).
+- `Button_Label`: Text for the final decision button (e.g., `P1 - Immediate`).
 - `Normalized_Value`: Mapped value for scoring. Allowed: `Red`, `Yellow`, `Green`, `Black`, `White`, `Blue`, `Orange`.
 
 ### Patients tab
@@ -57,7 +59,7 @@ Defines the scenario sequence and patient data.
 Required columns:
 - `ID`: Unique patient ID.
 - `Scenario`: Name of the scenario block.
-- `Is_Tutorial`: `TRUE` or `FALSE`.
+- `Is_Practice`: `TRUE` or `FALSE`. Indicates a practice case (not scored/logged).
 - `Patient_Name`: Display name.
 - `Visible_Text`: Initial text shown (e.g., "Patient is moaning...").
 
@@ -67,12 +69,12 @@ Optional columns:
   - If a cell is empty or contains "not applicable", the button is hidden for that patient.
 
 ## Runtime Flow
-1. **Onboarding**: Participant enters Department, Stream, Role, and receives an assigned Triage Tool.
-2. **Tutorial**: A practice patient to familiarize the user with the interface.
-3. **Scenarios**: Blocks of patients presented in randomized order.
+1. **Onboarding**: Participant enters Role, Experience Band, Fatigue Status, Prior Triage Training, and receives an assigned Triage Tool. Also includes consent and pre-readiness sliders.
+2. **Practice**: Practice patients to familiarize the user with the interface (results are not logged).
+3. **Scenarios**: Blocks of test patients presented in randomized order.
 4. **Washout**: A 15-second mandatory break between blocks.
-5. **Completion**: Generates a unique completion code.
-6. **Withdraw**: Option to delete session data.
+5. **Post-Simulation**: Post-scenario feedback sliders.
+6. **Completion**: Generates a unique completion code.
 
 ## Data Outputs
 - **CSV Log**: `data_out/logs_{session_id}_{timestamp}.csv`

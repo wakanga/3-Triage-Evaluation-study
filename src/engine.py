@@ -16,15 +16,20 @@ LOG_COLUMNS = [
     "content_pack_hash",
     "session_id",
     "participant_role",
+    "prior_triage_training",
+    "fatigue_status",
+    "consent_given",
     "tool_id",
     "scenario_type",
     "patient_id",
+    "patient_sequence_order",
     "event_type",
     "action_key",
     "decision_raw",
     "decision_normalized",
     "gold_standard",
     "correct",
+    "error_type",
     "deviation",
     "t_real_ms",
     "t_sim_ms",
@@ -87,6 +92,10 @@ def save_session_state():
         "participant_role": st.session_state.get("participant_role"),
         "years_exp": st.session_state.get("years_exp"),
         "fatigue_status": st.session_state.get("fatigue_status"),
+        "prior_triage_training": st.session_state.get("prior_triage_training"),
+        "pre_confidence": st.session_state.get("pre_confidence"),
+        "pre_understanding": st.session_state.get("pre_understanding"),
+        "consent_given": st.session_state.get("consent_given", False),
         "tool_id": st.session_state.get("tool_id"),
         "onboarding_complete": st.session_state.get("onboarding_complete", False),
         "patient_queue_ids": st.session_state.get("patient_queue_ids", []),
@@ -97,6 +106,12 @@ def save_session_state():
         "washout_active": st.session_state.get("washout_active", False),
         "washout_start_time": _dt_to_iso(st.session_state.get("washout_start_time")),
         "last_decision": st.session_state.get("last_decision"),
+        "pending_triage": st.session_state.get("pending_triage"),
+        "pre_practice_active": st.session_state.get("pre_practice_active", False),
+        "practice_transition_active": st.session_state.get("practice_transition_active", False),
+        "post_perception_done": st.session_state.get("post_perception_done", False),
+        "washout_animation_done": st.session_state.get("washout_animation_done", False),
+        "washout_logged": st.session_state.get("washout_logged", False),
         "log_filepath": st.session_state.get("log_filepath"),
     }
 
@@ -141,6 +156,10 @@ def try_resume_session(content_pack, content_hash):
     st.session_state.participant_role = payload.get("participant_role")
     st.session_state.years_exp = payload.get("years_exp")
     st.session_state.fatigue_status = payload.get("fatigue_status")
+    st.session_state.prior_triage_training = payload.get("prior_triage_training")
+    st.session_state.pre_confidence = payload.get("pre_confidence")
+    st.session_state.pre_understanding = payload.get("pre_understanding")
+    st.session_state.consent_given = payload.get("consent_given", False)
     st.session_state.tool_id = payload.get("tool_id")
     st.session_state.onboarding_complete = payload.get("onboarding_complete", False)
 
@@ -162,6 +181,12 @@ def try_resume_session(content_pack, content_hash):
     st.session_state.washout_active = payload.get("washout_active", False)
     st.session_state.washout_start_time = _dt_from_iso(payload.get("washout_start_time"))
     st.session_state.last_decision = payload.get("last_decision")
+    st.session_state.pending_triage = payload.get("pending_triage")
+    st.session_state.pre_practice_active = payload.get("pre_practice_active", False)
+    st.session_state.practice_transition_active = payload.get("practice_transition_active", False)
+    st.session_state.post_perception_done = payload.get("post_perception_done", False)
+    st.session_state.washout_animation_done = payload.get("washout_animation_done", False)
+    st.session_state.washout_logged = payload.get("washout_logged", False)
 
     st.session_state.log_filepath = payload.get("log_filepath")
     if not st.session_state.log_filepath:
@@ -202,6 +227,7 @@ def initialize_session(content_pack, content_hash):
         # Logging
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         st.session_state.session_timestamp = timestamp
+        st.session_state.pending_triage = None
 
         # Ensure data_out directory exists
         os.makedirs("data_out", exist_ok=True)
@@ -211,14 +237,14 @@ def initialize_session(content_pack, content_hash):
 
 def get_gold_standard(patient, tool_id):
     """
-    Retrieves the specific gold standard for the tool.
-    Falls back to 'Gold_Standard_Normalized' if specific column missing.
+    Retrieves the specific consensus reference for the tool.
     """
-    # Map Tool ID to Excel Column Suffix
-    # Config/Tools ID: ATS, SMART, 10S
-    # Expected Excel Cols: Gold_Standard_ATS, Gold_Standard_SMART, Gold_Standard_10S
-    
-    col_name = f"Gold_Standard_{tool_id}"
+    if tool_id == "SMART":
+        col_name = "Ref_SMART"
+    elif tool_id == "TST":
+        col_name = "Ref_Standard_TST"
+    else:
+        col_name = f"Ref_{tool_id}"
     
     # 1. Try specific column
     val = patient.get(col_name)
@@ -277,14 +303,11 @@ def calculate_deviation(gold_std, selected):
     """
     
     mapping = {
-        "Black": 0,
+        "Black": 0, "Dead": 0,
         "Green": 1, 
         "Yellow": 2,
         "Red": 3,
-        # Handle ATS/Numerical variations if needed, but the Tools sheet usually normalizes to these colors.
-        # If the Normalized_Value is "Blue"/"White" (rare in MCI but exists in ATS):
-        "Blue": 1, # Treat as non-urgent
-        "White": 1 # Treat as non-urgent
+        "Blue": 1, "White": 1
     }
     
     val_gold = mapping.get(gold_std, -100)
@@ -301,6 +324,10 @@ def log_event(event_type, action_key=None, decision_raw=None, decision_normalize
         return # Should not happen
 
     patient = get_current_patient()
+    
+    # Do not log data for practice cases
+    if patient and patient.get("Is_Practice") == True:
+        return
     
     patient_id = patient["ID"] if patient else "NA"
     scenario_type = patient["Scenario"] if patient else "NA"
@@ -324,9 +351,9 @@ def log_event(event_type, action_key=None, decision_raw=None, decision_normalize
         t_sim_ms = t_real_ms + st.session_state.accumulated_cost_ms
 
     # Grading & Metrics
-    # Only calculate for 'decision' events
     is_correct = ""
     deviation = ""
+    error_type = ""
     
     if event_type == "decision" and gold_standard != "NA" and decision_normalized:
         # Correctness
@@ -336,22 +363,34 @@ def log_event(event_type, action_key=None, decision_raw=None, decision_normalize
         dev_val = calculate_deviation(gold_standard, decision_normalized)
         deviation = dev_val if dev_val is not None else "ERR"
 
+        if deviation == 0:
+            error_type = "correct"
+        elif deviation is not None and deviation > 0:
+            error_type = "overtriage"
+        elif deviation is not None and deviation < 0:
+            error_type = "undertriage"
+
     row = {
         "timestamp_utc": now.isoformat(),
         "app_version": st.session_state.app_version,
         "content_pack_hash": st.session_state.content_pack_hash,
         "session_id": st.session_state.session_id,
         "participant_role": st.session_state.get("participant_role", "NA"),
+        "prior_triage_training": st.session_state.get("prior_triage_training", "NA"),
+        "fatigue_status": st.session_state.get("fatigue_status", "NA"),
+        "consent_given": st.session_state.get("consent_given", False),
         "tool_id": tool_id,
         "scenario_type": scenario_type,
         "patient_id": patient_id,
+        "patient_sequence_order": st.session_state.get("current_patient_index", 0) + 1 if patient else "",
         "event_type": event_type,
         "action_key": action_key if action_key else "",
         "decision_raw": decision_raw if decision_raw else "",
         "decision_normalized": decision_normalized if decision_normalized else "",
         "gold_standard": gold_standard,
         "correct": is_correct,
-        "deviation": deviation, # 0, +1, -1 etc
+        "error_type": error_type,
+        "deviation": deviation, 
         "t_real_ms": t_real_ms,
         "t_sim_ms": t_sim_ms,
     }
@@ -419,6 +458,31 @@ def log_nasa_tlx(data):
         writer.writerow(row)
         f.flush()
 
+def log_post_perception(data):
+    """Logs post-simulation perception results to a separate CSV."""
+    filepath = "data_out/post_perception_logs.csv"
+    
+    row = {
+        "timestamp_utc": datetime.now().isoformat(),
+        "session_id": st.session_state.session_id,
+        "participant_role": st.session_state.get("participant_role", "NA"),
+        "tool_id": st.session_state.get("tool_id", "NA"),
+        **data
+    }
+    
+    columns = [
+        "timestamp_utc", "session_id", "participant_role", "tool_id", 
+        "post_understanding", "post_preparedness", "post_tool_effective"
+    ]
+    
+    header = not os.path.exists(filepath)
+    with open(filepath, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        if header:
+            writer.writeheader()
+        writer.writerow(row)
+        f.flush()
+
 def generate_patient_queue():
     """Generates the patient queue from the content pack."""
     df_patients = st.session_state.content_pack["Patients"]
@@ -429,15 +493,15 @@ def generate_patient_queue():
         st.stop()
         
     # Logic:
-    # 1. Tutorial patients first (Is_Tutorial == True)
+    # 1. Practice patients first (Is_Practice == True)
     # 2. Scenarios: Group by Scenario. Randomize order of Scenarios? Or randomize patients within Scenarios?
     # Usually: Randomized Scenarios, or Set Order.
     # README says: "Scenarios: Blocks of patients presented in randomized order."
     
-    tutorials = df_patients[df_patients["Is_Tutorial"] == True].to_dict("records")
+    tutorials = df_patients[df_patients["Is_Practice"] == True].to_dict("records")
     
     # Get Scenarios
-    scenarios = df_patients[df_patients["Is_Tutorial"] != True]
+    scenarios = df_patients[df_patients["Is_Practice"] != True]
     scenario_names = scenarios["Scenario"].unique()
     
     # Shuffle Scenario Blocks?
@@ -483,3 +547,4 @@ def start_new_patient():
     st.session_state.revealed_actions = set() # Reset revealed actions
     st.session_state.accumulated_cost_ms = 0
     st.session_state.last_decision = None
+    st.session_state.pending_triage = None

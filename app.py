@@ -6,7 +6,7 @@ from datetime import datetime
 from src import utils, engine, components
 
 # Set Page Config
-st.set_page_config(page_title="Triage Study", page_icon="🚑", layout="wide")
+st.set_page_config(page_title="STEP: Triage Study", page_icon="🚑", layout="wide")
 
 # Constants
 CONTENT_PACK_PATH = "config/study_content_pack.xlsx"
@@ -68,21 +68,22 @@ def main():
             # Assuming Tutorial is always first.
             # So if Prev != Curr, and neither is Tutorial, then Washout.
 
-            if (prev_patient["Scenario"] != curr_patient["Scenario"]) and \
+            if prev_patient.get("Is_Practice", False) and not curr_patient.get("Is_Practice", False):
+                # Trigger Practice Transition Screen
+                st.session_state.practice_transition_active = True
+                # Reset any accumulated session-level practice data if needed
+                st.session_state.card_start_time = None
+                engine.save_session_state()
+
+            elif (prev_patient["Scenario"] != curr_patient["Scenario"]) and \
                (prev_patient["Scenario"] != "Tutorial") and \
                (curr_patient["Scenario"] != "Tutorial"):
                 
-                # SUPPRESS FOR TUTORIAL SCENARIOS
-                # If the COMPLETED scenario was a tutorial (Is_Tutorial=True), skip NASA TLX.
-                # However, the user said "during the tutorial cases when swithcing between scenarios".
-                # If I have multiple tutorials, I don't want NASA TLX.
-                # If I switch FROM tutorial TO real scenario, I probably don't want NASA TLX for the tutorial.
-                
-                # Check if the JUST FINISHED scenario was a tutorial
+                # Check if the JUST FINISHED scenario was a practice
                 # prev_patient is the last one of the block we just finished.
-                is_prev_tutorial = prev_patient.get("Is_Tutorial", False)
+                is_prev_practice = prev_patient.get("Is_Practice", False)
                 
-                if not is_prev_tutorial:
+                if not is_prev_practice:
                     # TRIGGER NASA-TLX FIRST
                     st.session_state.nasa_tlx_active = True
                     st.session_state.last_finished_scenario = prev_patient["Scenario"]
@@ -107,75 +108,93 @@ def main():
 
     # 4. Phase 1: Onboarding
     if not st.session_state.onboarding_complete:
-        st.title("Triage Study: Onboarding")
+        st.title("STEP: Onboarding")
 
 
         with st.form("onboarding_form"):
             role = st.selectbox("Role", ["-- Click here --", "Paramedic", "Nurse", "Doctor", "Police", "Fire/Rescue", "Student/Other"])
             years = st.selectbox("Years Experience", ["-- Click here --", "0-2 years", "2-5 years", "5-10 years", "10+ years"])
             fatigue = st.selectbox("Fatigue Status", ["-- Click here --", "On Shift (Currently working)", "Off Shift (<12 hours since last shift)", "Rested (>12 hours since last shift)"])
+            prior_triage = st.selectbox("Prior Triage Training", ["-- Click here --", "None", "MIMMS", "Hospital Triage Only", "TST Training", "SMART Training", "Other"])
+            tool_id = st.selectbox("Assigned Tool", ["-- Click here --", "SMART", "TST"])
 
-            # Tool Selection (Implicitly defined? Or User selects?
-            # README says: "Triage Decision: User sees buttons defined in the Tools Excel tab for their assigned tool."
-            # "Inputs: Role, Years Exp, Fatigue Status."
-            # It doesn't explicitly say user chooses Tool. But "participant_role" is logged. "tool_id" is logged.
-            # Usually in studies, tool is assigned or user selects.
-            # "Triage Decision: User sees buttons defined in the Tools Excel tab for their assigned tool."
-            # I will add a dropdown for Tool ID for now, as it's critical.
-
-            tool_id = st.selectbox("Assigned Tool", ["-- Click here --", "ATS", "SMART", "10S"])
+            st.markdown("### Pre-Simulation Readiness")
+            pre_conf = st.slider("I feel confident triaging in an MCI.", 0, 100, 50)
+            pre_und = st.slider("I understand the differences between common triage scales.", 0, 100, 50)
+            
+            st.markdown("### Ethics & Consent")
+            consent_1 = st.checkbox("I understand this is a research simulation and not clinical training certification.")
+            consent_2 = st.checkbox("I consent to anonymised data use.")
 
             submitted = st.form_submit_button("Start Study")
             if submitted:
                 # Validate that all fields were selected (not placeholder)
-                if role == "-- Click here --" or years == "-- Click here --" or fatigue == "-- Click here --" or tool_id == "-- Click here --":
-                    st.error("Please select an option for all fields before proceeding.")
+                if "-- Click here --" in [role, years, fatigue, prior_triage, tool_id]:
+                    st.error("Please select an option for all dropdown fields before proceeding.")
+                elif not (consent_1 and consent_2):
+                    st.error("You must explicitly consent and acknowledge the simulation nature to participate.")
                 else:
                     st.session_state.participant_role = role
                     st.session_state.years_exp = years
                     st.session_state.fatigue_status = fatigue
+                    st.session_state.prior_triage_training = prior_triage
                     st.session_state.tool_id = tool_id
+                    st.session_state.pre_confidence = pre_conf
+                    st.session_state.pre_understanding = pre_und
+                    st.session_state.consent_given = True
                     st.session_state.onboarding_complete = True
+                    st.session_state.pre_practice_active = True
                     engine.save_session_state()
-                    engine.start_new_patient()
                     st.rerun()
 
         # --- Test Mode: Rapid Onboarding ---
         st.divider()
         st.subheader("Rapid Entry")
-        rc1, rc2, rc3 = st.columns(3)
+        rc1, rc2 = st.columns(2)
         with rc1:
-            if st.button("⚡ Rapid ATS", type="primary"):
-                st.session_state.participant_role = "Paramedic"
-                st.session_state.years_exp = "5-10 years"
-                st.session_state.fatigue_status = "Rested"
-                st.session_state.tool_id = "ATS"
-                st.session_state.onboarding_complete = True
-                engine.save_session_state()
-                engine.start_new_patient()
-                st.rerun()
-        with rc2:
             if st.button("⚡ Rapid SMART", type="primary"):
                 st.session_state.participant_role = "Paramedic"
                 st.session_state.years_exp = "5-10 years"
                 st.session_state.fatigue_status = "Rested"
                 st.session_state.tool_id = "SMART"
                 st.session_state.onboarding_complete = True
+                st.session_state.pre_practice_active = True
                 engine.save_session_state()
-                engine.start_new_patient()
                 st.rerun()
-        with rc3:
-            if st.button("⚡ Rapid 10S", type="primary"):
+        with rc2:
+            if st.button("⚡ Rapid TST", type="primary"):
                 st.session_state.participant_role = "Paramedic"
                 st.session_state.years_exp = "5-10 years"
                 st.session_state.fatigue_status = "Rested"
-                st.session_state.tool_id = "10S"
+                st.session_state.tool_id = "TST"
                 st.session_state.onboarding_complete = True
+                st.session_state.pre_practice_active = True
                 engine.save_session_state()
-                engine.start_new_patient()
                 st.rerun()
         # -----------------------------------
 
+        return
+
+    # Phase 1b: Pre-Practice Orientation Screen
+    if st.session_state.get("pre_practice_active", False):
+        st.title("Orientation")
+        st.markdown("""
+        ### Welcome to the Simulation
+        
+        Before the main study begins, you will be presented with **two practice cases**. Feel free to explore the interface, click on the clinical assessments, and familiarize yourself with the layout. 
+
+        *Imagine you have just arrived at a chaotic mass casualty scene. You are walking from patient to patient, making rapid initial assessments.*
+        
+        When you are ready to evaluate the next patient, simply click on the appropriate triage colour block at the bottom.
+        
+        **Note:** These practice cases are entirely for your orientation and will not be scored or included in the final analysis.
+        """)
+        
+        if st.button("Start Practice", type="primary"):
+            st.session_state.pre_practice_active = False
+            engine.start_new_patient()
+            engine.save_session_state()
+            st.rerun()
         return
 
     # Phase 4a: NASA-TLX (Before Washout)
@@ -186,10 +205,18 @@ def main():
     # 5. Phase 4b: Washout (Active?)
     if st.session_state.washout_active:
         components.render_washout()
-        st.session_state.washout_active = False
-        engine.save_session_state()
-        engine.start_new_patient() # Now start the patient timer
-        st.rerun()
+        return
+
+    # Phase 4c: Practice Transition Screen
+    if st.session_state.get("practice_transition_active", False):
+        st.title("Practice Complete")
+        st.info("The practice cases are now complete. The live simulation begins now.")
+        st.warning("All subsequent cases will be timed and logged for analysis. Please treat them as a real scenario.")
+        if st.button("Start Simulation", type="primary"):
+            st.session_state.practice_transition_active = False
+            engine.start_new_patient() 
+            engine.save_session_state()
+            st.rerun()
         return
 
     # 6. Phase 2 & 3: Main Scenario / Tutorial
@@ -235,8 +262,29 @@ def main():
 
     else:
         # Phase 5: Completion
+        st.title("STEP: Study Complete")
+
+        if not st.session_state.get("post_perception_done"):
+            st.markdown("### Final Feedback")
+            st.info("Please answer a few final questions about your experience.")
+            with st.form("post_sim_form"):
+                post_und = st.slider("My understanding of triage scale differences improved.", 0, 100, 50)
+                post_prep = st.slider("I feel more prepared to triage in an MCI.", 0, 100, 50)
+                post_tool = st.slider("This tool structured my thinking effectively.", 0, 100, 50)
+                
+                if st.form_submit_button("Submit & Finish"):
+                    st.session_state.post_perception_done = True
+                    data = {
+                        "post_understanding": post_und,
+                        "post_preparedness": post_prep,
+                        "post_tool_effective": post_tool,
+                    }
+                    engine.log_post_perception(data)
+                    engine.save_session_state()
+                    st.rerun()
+            return
+
         st.balloons()
-        st.title("Study Complete")
         st.success("Thank you for your participation.")
 
         timestamp = st.session_state.get("session_timestamp", "0000")

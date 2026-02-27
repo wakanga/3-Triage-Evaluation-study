@@ -3,7 +3,7 @@ import os
 import pandas as pd
 from PIL import Image
 import time
-from src.engine import log_event, save_session_state, get_investigation_result, log_nasa_tlx
+from src.engine import log_event, save_session_state, get_investigation_result, log_nasa_tlx, start_new_patient
 
 def load_image(filename):
     """Loads an image from assets/img, falling back to default.png."""
@@ -131,7 +131,7 @@ def render_action_buttons(patient, config_df):
     """, unsafe_allow_html=True)
 
     # Get current tool to filter actions
-    tool_id = st.session_state.get("tool_id", "ATS")
+    tool_id = st.session_state.get("tool_id", "SMART")
     valid_actions = config_df[config_df['Valid_Tools'].str.contains(tool_id, na=False)]
 
     labels = {
@@ -242,12 +242,16 @@ def render_triage_tools(tools_df, tool_id):
                 save_session_state()
                 st.rerun()
 
-def render_washout(duration_seconds=15):
-    """Renders the washout screen with a countdown."""
+def render_washout():
+    """Renders a mandatory washout period between scenarios with breathing animation."""
+    st.markdown("### 🛑 WASHOUT PERIOD")
     placeholder = st.empty()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    # Log start
-    log_event(event_type="washout_start")
+    if not st.session_state.get("washout_logged", False):
+        log_event(event_type="washout_start")
+        st.session_state.washout_logged = True
+        save_session_state()
     
     # Scroll to Top Hack
     st.components.v1.html(
@@ -263,17 +267,12 @@ def render_washout(duration_seconds=15):
             padding: 50px;
             border-radius: 10px;
             text-align: center;
-            height: 80vh;
+            height: 60vh;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-        }
-        .washout-title {
-            color: #2c3e50;
-            font-size: 3rem;
-            font-weight: bold;
-            margin-bottom: 20px;
+            transition: background-color 0.5s ease;
         }
         .washout-timer {
             color: #e74c3c;
@@ -282,24 +281,58 @@ def render_washout(duration_seconds=15):
         }
         .washout-text {
             color: #34495e;
-            font-size: 2rem;
+            font-size: 3rem;
+            font-weight: bold;
             margin-top: 30px;
+            min-height: 80px;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    for i in range(duration_seconds, 0, -1):
-        placeholder.markdown(f"""
-        <div class="washout-container">
-            <div class="washout-title">🛑 WASHOUT PERIOD</div>
-            <div class="washout-timer">{i}</div>
-            <div class="washout-text">Take a deep breath...</div>
+    # Only run the animation once per washout
+    if not st.session_state.get("washout_animation_done", False):
+        # 15 seconds total: Breathe In (5), Hold (5), Breathe Out (5)
+        phases = [
+            ("Breathe in...", 5),
+            ("Hold...", 5),
+            ("Breathe out...", 5)
+        ]
+        
+        for phase_text, duration in phases:
+            for i in range(duration, 0, -1):
+                placeholder.markdown(f"""
+                <div class="washout-container">
+                    <div class="washout-timer">{i}</div>
+                    <div class="washout-text">{phase_text}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                time.sleep(1)
+        
+        log_event(event_type="washout_complete")
+        st.session_state.washout_animation_done = True
+        placeholder.empty()
+        save_session_state()
+        st.rerun()
+    else:
+        # After animation is done, show the ready button
+        placeholder.markdown("""
+        <div class="washout-container" style="background-color: #d4edda;">
+            <div class="washout-text" style="color: #27ae60;">Ready?</div>
         </div>
         """, unsafe_allow_html=True)
-        time.sleep(1)
-
-    log_event(event_type="washout_complete")
-    placeholder.empty()
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("Start Next Scenario", type="primary", use_container_width=True, key="washout_ready_btn"):
+                # Clean up washout state variables
+                st.session_state.washout_logged = False
+                st.session_state.washout_animation_done = False
+                
+                # Turn off washout and start next block
+                st.session_state.washout_active = False
+                save_session_state()
+                start_new_patient()
+                st.rerun()
 
 def render_nasa_tlx():
     """Renders the NASA-TLX survey form."""
