@@ -12,13 +12,13 @@ def calculate_hash(filepath):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
-def load_content_pack(filepath):
+def load_content_pack(file_or_path):
     """Loads the Excel content pack into a dictionary of DataFrames."""
-    if not os.path.exists(filepath):
-        st.error(f"Content pack not found at {filepath}")
+    if isinstance(file_or_path, str) and not os.path.exists(file_or_path):
+        st.error(f"Content pack not found at {file_or_path}")
         st.stop()
 
-    xls = pd.ExcelFile(filepath)
+    xls = pd.ExcelFile(file_or_path)
     sheets = {}
     for sheet_name in ["Config", "Tools", "Patients"]:
         if sheet_name not in xls.sheet_names:

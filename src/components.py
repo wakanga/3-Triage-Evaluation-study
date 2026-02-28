@@ -213,34 +213,81 @@ def _render_inline_action(row, patient):
 
 def render_triage_tools(tools_df, tool_id):
     """Renders the triage decision buttons in a compact grid."""
-    st.markdown("#### Decision")
-
+    
     # Filter tools by the selected Tool_ID
     my_tools = tools_df[tools_df["Tool_ID"] == tool_id]
 
+    st.text_area("Clinician Notes (optional)", key="clinician_notes", height=68)
+
     # Grid Layout (2 cols)
     cols = st.columns(2, gap="small")
+    
+    color_map = {
+        "Red": "#e74c3c", "Yellow": "#f1c40f", "Green": "#2ecc71",
+        "Black": "#2c3e50", "White": "#bdc3c7", "Blue": "#3498db", "Orange": "#e67e22"
+    }
+
+    button_colors = {}
 
     for i, (_, row) in enumerate(my_tools.iterrows()):
         label = row['Button_Label']
         normalized = row['Normalized_Value']
         
-        emoji_map = {
-            "Red": "🔴", "Yellow": "🟡", "Green": "🟢",
-            "Black": "⚫", "White": "⚪", "Blue": "🔵", "Orange": "🟠"
-        }
-        btn_label = f"{emoji_map.get(normalized, '')} {label}"
+        # Remove emojis, use simple label string
+        btn_label = str(label).strip()
+        
+        # Save mapping for javascript injection
+        border_color = color_map.get(normalized, "#cccccc")
+        button_colors[btn_label] = border_color
         
         # Alternate columns
         with cols[i % 2]:
             if st.button(btn_label, key=f"decision_{i}", use_container_width=True):
+                notes = st.session_state.get("clinician_notes", "")
                 # Log decision
                 log_event(event_type="decision", action_key="triage_decision",
-                          decision_raw=label, decision_normalized=normalized)
+                          decision_raw=label, decision_normalized=normalized, notes=notes)
 
                 st.session_state.last_decision = "made"
+                if "clinician_notes" in st.session_state:
+                    del st.session_state["clinician_notes"]
                 save_session_state()
                 st.rerun()
+
+    # Inject JavaScript to cleanly outline these specific buttons
+    js_colors = str(button_colors).replace("'", '"')
+    
+    js_code = f"""
+    <script>
+      const btnColors = {js_colors};
+      const doc = window.parent.document;
+      
+      function styleButtons() {{
+          const buttons = doc.querySelectorAll('button p');
+          buttons.forEach(p => {{
+              const text = p.innerText.trim();
+              if (btnColors[text]) {{
+                  // Apply colored outline to the parent button
+                  const btn = p.closest('button');
+                  if (btn) {{
+                      btn.style.border = '2px solid ' + btnColors[text];
+                      btn.style.transition = 'all 0.2s ease-in-out';
+                      
+                      // Also give a subtle background tint
+                      // btn.style.backgroundColor = btnColors[text] + '11';
+                  }}
+              }}
+          }});
+      }}
+      
+      // Run immediately and on slight delay to catch Streamlit re-renders
+      styleButtons();
+      setTimeout(styleButtons, 50);
+      setTimeout(styleButtons, 200);
+      setTimeout(styleButtons, 500);
+    </script>
+    """
+    st.components.v1.html(js_code, height=0)
 
 def render_washout():
     """Renders a mandatory washout period between scenarios with breathing animation."""
@@ -275,15 +322,15 @@ def render_washout():
             transition: background-color 0.5s ease;
         }
         .washout-timer {
-            color: #e74c3c;
-            font-size: 5rem;
-            font-weight: 800;
+            color: #7f8c8d;
+            font-size: 2.5rem;
+            font-weight: 600;
         }
         .washout-text {
             color: #34495e;
             font-size: 3rem;
             font-weight: bold;
-            margin-top: 30px;
+            margin-top: 15px;
             min-height: 80px;
         }
         </style>
@@ -291,12 +338,21 @@ def render_washout():
 
     # Only run the animation once per washout
     if not st.session_state.get("washout_animation_done", False):
-        # 15 seconds total: Breathe In (5), Hold (5), Breathe Out (5)
+        # 40 seconds total: 2 rounds of box breathing
         phases = [
             ("Breathe in...", 5),
             ("Hold...", 5),
-            ("Breathe out...", 5)
+            ("Breathe out...", 5),
+            ("Hold...", 5),
+            ("Breathe in...", 5),
+            ("Hold...", 5),
+            ("Breathe out...", 5),
+            ("Hold...", 5)
         ]
+        
+        total_time = sum(p[1] for p in phases)
+        current_time = 0
+        progress_bar = st.empty()
         
         for phase_text, duration in phases:
             for i in range(duration, 0, -1):
@@ -306,11 +362,14 @@ def render_washout():
                     <div class="washout-text">{phase_text}</div>
                 </div>
                 """, unsafe_allow_html=True)
+                current_time += 1
+                progress_bar.progress(current_time / total_time)
                 time.sleep(1)
         
         log_event(event_type="washout_complete")
         st.session_state.washout_animation_done = True
         placeholder.empty()
+        progress_bar.empty()
         save_session_state()
         st.rerun()
     else:

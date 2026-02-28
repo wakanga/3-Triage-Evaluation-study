@@ -9,7 +9,7 @@ A Streamlit-based research app that simulates mass-casualty triage under "fog of
 - **Inline Action Grid**: Categorized assessment actions (A-B-C-D-E) are integrated into a compact, responsive grid.
 - **Sticky Sidebar**: Patient information and clinical findings remain visible while scrolling through actions.
 - **Excel-Driven Engine**: Fully configurable scenarios, actions, and tools via `study_content_pack.xlsx`.
-- **Washout Period**: Enforced breaks between scenario blocks to reset cognitive load.
+- **Washout Period**: Enforced 40-second breaks between scenario blocks featuring guided box breathing to reset cognitive load.
 - **Session Resume**: Append-only logging with unique session IDs and URL-based resume (`?sid=...`).
 
 ## Tech Stack
@@ -72,7 +72,7 @@ Optional columns:
 1. **Onboarding**: Participant enters Role, Experience Band, Fatigue Status, Prior Triage Training, and receives an assigned Triage Tool. Also includes consent and pre-readiness sliders.
 2. **Practice**: Practice patients to familiarize the user with the interface (results are not logged).
 3. **Scenarios**: Blocks of test patients presented in randomized order.
-4. **Washout**: A 15-second mandatory break between blocks.
+4. **Washout**: A 40-second mandatory box-breathing break between blocks.
 5. **Post-Simulation**: Post-scenario feedback sliders.
 6. **Completion**: Generates a unique completion code.
 

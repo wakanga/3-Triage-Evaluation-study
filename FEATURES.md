@@ -6,18 +6,22 @@ This document serves as an exposé of the current capabilities of the Standardis
 
 ### Core Simulation Engine
 *   **"Fog of War" Mechanics**: Clinical findings are initially hidden and must be "purchased" with simulated clinical time, mimicking the uncertainty and time pressure of real-world triage.
-*   **Excel-Driven Configuration**: The entire study (scenarios, patient data, available actions, and triage tools) is dynamically loaded from a single, fully configurable `study_content_pack.xlsx` file. This allows researchers to modify the study without altering code. 
-There is functionality for the excel to load from a Google Spreadsheet which can be updated in real time and also a functionality of picking different spreadsheets (in .xlsx) from the local machine.
+*   **Dynamic Data Sources & Configuration**: The entire study (scenarios, patient data, available actions, and triage tools) is dynamically loaded. The app provides an Admin Toggle to select between three modes:
+    *   **Mode A: In App (.xlsx)**: Automatically scans the `config/` folder and provides a dropdown to load any valid `.xlsx` content pack.
+    *   **Mode B: Upload (.xlsx)**: Allows users to manually upload a local `.xlsx` content pack.
+    *   **Mode C: Cloud Upload**: Dynamically fetch study data from Google Sheets, authenticated securely via Streamlit Secrets.
 *   **Dual-Timer System**: The app concurrently tracks both real-world time (`t_real_ms`) and simulated clinical time (`t_sim_ms`) for every action taken.
 
 ### User Interface & Experience
 *   **Inline Action Grid**: A highly compact, responsive grid layout for assessment actions, categorized logically by standard approaches (e.g., A-B-C-D-E).
 *   **Sticky Sidebar / Floating Layout**: Critical patient information and the action summary remain fixed and visible while the user scrolls through the available investigation options, reducing cognitive friction.
-*   **Dynamic Visuals**: Supports patient avatar images and provides instant text based feedback when actions are selected or deselected.
-*   **Washout Periods**: Enforces a mandatory timed break (e.g., 15 seconds) between scenario blocks to reset the participant's cognitive load before the next set of patients.
+*   **Dynamic Visuals**: Supports patient avatar images and provides instant text based feedback when actions are selected or deselected. Triage decision buttons are dynamically styled with color-coded outlines.
+*   **Washout Periods**: Enforces a mandatory timed break (40 seconds) featuring guided box breathing and a progress bar between scenario blocks to reset the participant's cognitive load before the next set of patients.
 
 ### Data Collection & Research Tools
 *   **Comprehensive Session Logging**: Append-only CSV logging captures every click, reveal, hide, and final decision alongside associated timestamp data.
+*   **Cloud Feedback Loop (Google Sheets)**: When operating in Mode B, final triage decisions (including optional Clinician Notes) are automatically appended in real-time to a `Triage_Logs` tab within the active Google Sheet.
+*   **Clinician Notes**: An optional text area allows participants to record clinical reasoning or notes prior to submitting their final triage category.
 *   **Session Resume**: Interrupted sessions can be reliably resumed using URL parameters (`?sid=...`) and JSON-backed session state recovery.
 *   **NASA-TLX Integration**: Built-in support for capturing subjective cognitive load assessments from participants.
 *   **Automated Validation**: Built-in validation checks structural integrity, missing columns, and logical links across the Excel content pack to warn researchers of config errors before deployment.

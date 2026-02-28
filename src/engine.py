@@ -318,8 +318,8 @@ def calculate_deviation(gold_std, selected):
         
     return val_sel - val_gold
 
-def log_event(event_type, action_key=None, decision_raw=None, decision_normalized=None):
-    """Logs an event to the CSV file."""
+def log_event(event_type, action_key=None, decision_raw=None, decision_normalized=None, notes=None):
+    """Logs an event to the CSV file and optionally to Google Sheets."""
     if "log_filepath" not in st.session_state:
         return # Should not happen
 
@@ -412,6 +412,18 @@ def log_event(event_type, action_key=None, decision_raw=None, decision_normalize
             writer.writeheader()
         writer.writerow(row)
         f.flush()
+
+    # Log to Google Sheets if in Mode C and this is a triage decision
+    if event_type == "decision" and st.session_state.get("data_mode") == "Mode C":
+        active_sheet = st.session_state.get("active_google_sheet")
+        if active_sheet:
+            from src import cloud
+            triage_cat = decision_normalized if decision_normalized else decision_raw
+            clinician_notes = notes if notes else ""
+            cloud.append_triage_log(
+                active_sheet,
+                [now.isoformat(), patient_id, triage_cat, clinician_notes]
+            )
 
 def log_nasa_tlx(data):
     """Logs NASA-TLX results to a separate CSV."""

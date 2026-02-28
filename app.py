@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 import os
 import time
+import hashlib
+import io
 from datetime import datetime
-from src import utils, engine, components
+from src import utils, engine, components, cloud
 
 # Set Page Config
 st.set_page_config(page_title="STEP: Triage Study", page_icon="🚑", layout="wide")
@@ -12,20 +14,79 @@ st.set_page_config(page_title="STEP: Triage Study", page_icon="🚑", layout="wi
 CONTENT_PACK_PATH = "config/study_content_pack.xlsx"
 
 def main():
-    # 1. Load & Validate Content (Cached/Once)
-    # We do this outside the main render loop to ensure it happens on startup
-    if "content_pack" not in st.session_state:
-        # Load
-        if not os.path.exists(CONTENT_PACK_PATH):
-             st.error("Content pack not found!")
-             st.stop()
+    with st.sidebar:
+        st.header("Admin Settings")
+        data_mode = st.radio("Data Source", [
+            "Mode A: In App (.xlsx)", 
+            "Mode B: Upload (.xlsx)", 
+            "Mode C: Cloud Upload"
+        ])
+        st.divider()
 
-        content_hash = utils.calculate_hash(CONTENT_PACK_PATH)
-        sheets = utils.load_content_pack(CONTENT_PACK_PATH)
+    # 1. Load & Validate Content (Cached/Once)
+    if "content_pack" not in st.session_state:
+        sheets = None
+        content_hash = None
+
+        if "Mode A" in data_mode:
+            config_dir = "config"
+            if not os.path.exists(config_dir):
+                st.sidebar.error(f"Config directory '{config_dir}' not found!")
+                st.stop()
+                
+            local_files = [f for f in os.listdir(config_dir) if f.endswith('.xlsx') and not f.startswith('~')]
+            
+            if not local_files:
+                st.sidebar.warning(f"No .xlsx files found in '{config_dir}' folder!")
+                st.stop()
+                
+            selected_local_file = st.sidebar.selectbox("Select In-App Config File", local_files, index=None, placeholder="Choose a file...")
+            
+            if selected_local_file:
+                pack_path = os.path.join(config_dir, selected_local_file)
+                content_hash = utils.calculate_hash(pack_path)
+                sheets = utils.load_content_pack(pack_path)
+                st.session_state.data_mode = "Mode A"
+            else:
+                st.info("Please select a config file.")
+                st.stop()
+            
+        elif "Mode B" in data_mode:
+            uploaded_file = st.sidebar.file_uploader("Upload Local Content Pack", type=["xlsx"])
+            if uploaded_file is not None:
+                bytes_data = uploaded_file.getvalue()
+                content_hash = hashlib.sha256(bytes_data).hexdigest()
+                sheets = utils.load_content_pack(io.BytesIO(bytes_data))
+                st.session_state.data_mode = "Mode B"
+            else:
+                st.info("Please upload a local patient queue (.xlsx) to begin.")
+                st.stop()
+        else:
+            # Mode C
+            st.session_state.data_mode = "Mode C"
+            available_sheets = cloud.get_available_sheets()
+            if not available_sheets:
+                st.sidebar.warning("No Google Sheets found or authentication failed.")
+                st.stop()
+            
+            selected_sheet = st.sidebar.selectbox("Select Study Content Pack", available_sheets, index=None, placeholder="Choose a sheet...")
+            if selected_sheet:
+                content_hash = hashlib.sha256(selected_sheet.encode()).hexdigest()
+                sheets = cloud.fetch_gsheet_data(selected_sheet)
+                st.session_state.active_google_sheet = selected_sheet
+                
+                if not sheets:
+                    st.error("Failed to load data from the selected Google Sheet.")
+                    st.stop()
+            else:
+                st.info("Please select a Google Sheet to begin.")
+                st.stop()
 
         # Validate
         utils.validate_content_pack(sheets)
-
+        
+        st.session_state.content_pack = sheets # Make sure this is set so resume/initialize doesn't fail if they need it immediately
+        
         # Try Resume or Initialize
         resumed = engine.try_resume_session(sheets, content_hash)
         if not resumed:
@@ -34,6 +95,7 @@ def main():
             engine.save_session_state()
 
         engine.ensure_query_param()
+        st.rerun()
 
     # 2. Check for "Withdraw" (Footer/Sidebar)
     with st.sidebar:
@@ -248,7 +310,7 @@ def main():
 
             # 2. Triage Section (Right)
             with c_triage:
-                st.markdown("#### Decision")
+                st.markdown("#### Triage decision.")
                 # Render Tools
                 components.render_triage_tools(st.session_state.content_pack["Tools"], st.session_state.tool_id)
         
