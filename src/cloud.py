@@ -29,17 +29,23 @@ def get_available_sheets():
         st.error(f"Error fetching sheets: {e}")
         return []
 
-@st.cache_data(ttl=600)
-def fetch_gsheet_data(sheet_name):
-    """Fetches Config, Tools, and Patients tabs from a Google Sheet."""
+@st.cache_resource(ttl=3600)
+def get_spreadsheet(sheet_name):
+    """Caches the spreadsheet object to prevent duplicate API discovery calls."""
     client = get_gspread_client()
     if not client:
         return None
-        
     try:
-        spreadsheet = client.open(sheet_name)
+        return client.open(sheet_name)
     except Exception as e:
         st.error(f"Could not open sheet '{sheet_name}'. Error: {e}")
+        return None
+
+@st.cache_data(ttl=600)
+def fetch_gsheet_data(sheet_name):
+    """Fetches Config, Tools, and Patients tabs from a Google Sheet."""
+    spreadsheet = get_spreadsheet(sheet_name)
+    if not spreadsheet:
         return None
 
     sheets_data = {}
@@ -64,14 +70,8 @@ def append_triage_log(sheet_name, data_row):
     Appends a log row to the 'Triage_Logs' worksheet.
     data_row should be formatted like: [Timestamp, PatientID, TriageCategory, ClinicianNotes]
     """
-    client = get_gspread_client()
-    if not client:
-        return
-
-    try:
-        spreadsheet = client.open(sheet_name)
-    except Exception as e:
-        print(f"Could not open sheet '{sheet_name}' to log: {e}")
+    spreadsheet = get_spreadsheet(sheet_name)
+    if not spreadsheet:
         return
 
     try:

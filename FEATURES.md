@@ -20,7 +20,8 @@ This document serves as an exposé of the current capabilities of the Standardis
 
 ### Data Collection & Research Tools
 *   **Comprehensive Session Logging**: Append-only CSV logging captures every click, reveal, hide, and final decision alongside associated timestamp data.
-*   **Cloud Feedback Loop (Google Sheets)**: When operating in Mode B, final triage decisions (including optional Clinician Notes) are automatically appended in real-time to a `Triage_Logs` tab within the active Google Sheet.
+*   **Cloud Feedback Loop (Google Sheets)**: When operating in Mode C, final triage decisions (including optional Clinician Notes) are automatically appended in real-time to a `Triage_Logs` tab within the active Google Sheet.
+*   **Explicit Data Source Selection**: Mode dropdowns require an explicit selection by the user to prevent accidental data loading.
 *   **Clinician Notes**: An optional text area allows participants to record clinical reasoning or notes prior to submitting their final triage category.
 *   **Session Resume**: Interrupted sessions can be reliably resumed using URL parameters (`?sid=...`) and JSON-backed session state recovery.
 *   **NASA-TLX Integration**: Built-in support for capturing subjective cognitive load assessments from participants.

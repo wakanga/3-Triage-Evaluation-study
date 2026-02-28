@@ -23,7 +23,7 @@ def main():
         ])
         st.divider()
 
-    # 1. Load & Validate Content (Cached/Once)
+    # Admin Logic: What data mode is selected?
     if "content_pack" not in st.session_state:
         sheets = None
         content_hash = None
@@ -48,7 +48,7 @@ def main():
                 sheets = utils.load_content_pack(pack_path)
                 st.session_state.data_mode = "Mode A"
             else:
-                st.info("Please select a config file.")
+                st.info("Please select a config file from the sidebar to begin.")
                 st.stop()
             
         elif "Mode B" in data_mode:
@@ -85,6 +85,12 @@ def main():
         # Validate
         utils.validate_content_pack(sheets)
         
+        # Defensively cast Is_Practice to boolean in case of string parsing (GSheets)
+        if "Patients" in sheets:
+            sheets["Patients"]["Is_Practice"] = sheets["Patients"].get("Is_Practice", False).apply(
+                lambda x: True if str(x).strip().upper() == "TRUE" or x is True else False
+            )
+
         st.session_state.content_pack = sheets # Make sure this is set so resume/initialize doesn't fail if they need it immediately
         
         # Try Resume or Initialize
@@ -96,6 +102,12 @@ def main():
 
         engine.ensure_query_param()
         st.rerun()
+    else:
+        # If content pack is loaded, display the status in the sidebar
+        if "Mode C" in st.session_state.get("data_mode", ""):
+            st.sidebar.success(f"Connected to: {st.session_state.get('active_google_sheet', 'Google Sheets')}")
+        else:
+            st.sidebar.success(f"Mode: {st.session_state.get('data_mode', 'Local')}")
 
     # 2. Check for "Withdraw" (Footer/Sidebar)
     with st.sidebar:
