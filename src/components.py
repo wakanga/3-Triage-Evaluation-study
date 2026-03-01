@@ -3,7 +3,7 @@ import os
 import pandas as pd
 from PIL import Image
 import time
-from src.engine import log_event, save_session_state, get_investigation_result, log_nasa_tlx, start_new_patient
+from src.engine import log_event, save_session_state, get_investigation_result, log_nasa_tlx, start_new_patient, INCLUDE_TLX_PHYSICAL
 
 def load_image(filename):
     """Loads an image from assets/img, falling back to default.png."""
@@ -162,14 +162,17 @@ def render_action_buttons(patient, config_df):
             
             # --- pre-calculate visible buttons ---
             visible_buttons = []
+            
             for _, row in cat_actions.iterrows():
                 key = row['Action_Key']
                 text_col = f"{key}_Text"
                 raw_result = str(patient.get(text_col, ""))
-                if "not applicable" in raw_result.lower():
-                    continue
-                if key == "airway_man":
-                    airway_result = str(patient.get("airway_Text", ""))
+                
+                if key not in ["airway_man", "hemorrhage_ctrl"]:
+                    if "not applicable" in raw_result.lower():
+                        continue
+                elif key == "airway_man":
+                    airway_result = str(patient.get("airway_obs_Text", ""))
                     if "clear" in airway_result.lower():
                         continue
                 visible_buttons.append(row)
@@ -217,14 +220,13 @@ def render_triage_tools(tools_df, tool_id):
     # Filter tools by the selected Tool_ID
     my_tools = tools_df[tools_df["Tool_ID"] == tool_id]
 
-    st.text_area("Clinician Notes (optional)", key="clinician_notes", height=68)
-
     # Grid Layout (2 cols)
     cols = st.columns(2, gap="small")
     
     color_map = {
         "Red": "#e74c3c", "Yellow": "#f1c40f", "Green": "#2ecc71",
-        "Black": "#2c3e50", "White": "#bdc3c7", "Blue": "#3498db", "Orange": "#e67e22"
+        "Black": "#2c3e50", "White": "#bdc3c7", "Blue": "#3498db", "Orange": "#e67e22",
+        "Silver": "#bdc3c7", "Grey": "#bdc3c7"
     }
 
     button_colors = {}
@@ -243,14 +245,11 @@ def render_triage_tools(tools_df, tool_id):
         # Alternate columns
         with cols[i % 2]:
             if st.button(btn_label, key=f"decision_{i}", use_container_width=True):
-                notes = st.session_state.get("clinician_notes", "")
                 # Log decision
                 log_event(event_type="decision", action_key="triage_decision",
-                          decision_raw=label, decision_normalized=normalized, notes=notes)
+                          decision_raw=label, decision_normalized=normalized)
 
                 st.session_state.last_decision = "made"
-                if "clinician_notes" in st.session_state:
-                    del st.session_state["clinician_notes"]
                 save_session_state()
                 st.rerun()
 
@@ -354,6 +353,18 @@ def render_washout():
         current_time = 0
         progress_bar = st.empty()
         
+        # Add a skip button container above the progress bar
+        skip_col1, skip_col2, skip_col3 = st.columns([1, 1, 1])
+        with skip_col2:
+            skip_placeholder = st.empty()
+            if skip_placeholder.button("Skip Washout", type="secondary", use_container_width=True, key="washout_skip_btn"):
+                st.session_state.washout_logged = False
+                st.session_state.washout_animation_done = False
+                st.session_state.washout_active = False
+                save_session_state()
+                start_new_patient()
+                st.rerun()
+
         for phase_text, duration in phases:
             for i in range(duration, 0, -1):
                 placeholder.markdown(f"""
@@ -365,6 +376,9 @@ def render_washout():
                 current_time += 1
                 progress_bar.progress(current_time / total_time)
                 time.sleep(1)
+        
+        # Clear the skip button once done
+        skip_placeholder.empty()
         
         log_event(event_type="washout_complete")
         st.session_state.washout_animation_done = True
@@ -389,6 +403,8 @@ def render_washout():
                 
                 # Turn off washout and start next block
                 st.session_state.washout_active = False
+                from datetime import datetime
+                st.session_state.block_start_time = datetime.now()
                 save_session_state()
                 start_new_patient()
                 st.rerun()
@@ -406,7 +422,10 @@ def render_nasa_tlx():
             m_demand = st.slider("How mentally demanding was the task?", 0, 100, 50, key="nasa_m")
             
             st.markdown("#### Physical Demand")
-            p_demand = st.slider("How physically demanding was the task?", 0, 100, 50, key="nasa_p")
+            if INCLUDE_TLX_PHYSICAL:
+                p_demand = st.slider("How physically demanding was the task?", 0, 100, 50, key="nasa_p")
+            else:
+                p_demand = ""
             
             st.markdown("#### Temporal Demand")
             t_demand = st.slider("How hurried or rushed was the pace??", 0, 100, 50, key="nasa_t")
@@ -431,11 +450,13 @@ def render_nasa_tlx():
         
         if submitted:
             # Calculate Raw Score (Mean)
-            raw_score = sum([m_demand, p_demand, t_demand, perf, effort, frust]) / 6.0
+            if INCLUDE_TLX_PHYSICAL:
+                raw_score = sum([m_demand, p_demand, t_demand, perf, effort, frust]) / 6.0
+            else:
+                raw_score = sum([m_demand, t_demand, perf, effort, frust]) / 5.0
             
             data = {
                 "nasa_mental": m_demand,
-                "nasa_physical": p_demand,
                 "nasa_temporal": t_demand,
                 "nasa_performance": perf, 
                 "nasa_effort": effort,
@@ -443,6 +464,8 @@ def render_nasa_tlx():
                 "nasa_raw_score": round(raw_score, 2),
                 "comments": comments
             }
+            if INCLUDE_TLX_PHYSICAL:
+                data["nasa_physical"] = p_demand
             
             log_nasa_tlx(data)
             

@@ -9,31 +9,86 @@ import json
 import csv
 
 APP_VERSION = "v1.0.0"
-SESSION_STATE_VERSION = 1
-LOG_COLUMNS = [
-    "timestamp_utc",
-    "app_version",
-    "content_pack_hash",
-    "session_id",
-    "participant_role",
+SCHEMA_VERSION = "2.1"
+SESSION_STATE_VERSION = 2
+INCLUDE_TLX_PHYSICAL = False
+
+LEDGER_COLUMNS = [
+    # Base
+    "t_run_ms", "ledger_row_index", "session_id", "completion_code", "record_type", "schema_version", 
+    "app_version", "content_pack_hash", "participant_role", "fatigue_status", 
     "prior_triage_training",
-    "fatigue_status",
-    "consent_given",
-    "tool_id",
-    "scenario_type",
-    "patient_id",
-    "patient_sequence_order",
-    "event_type",
-    "action_key",
-    "decision_raw",
-    "decision_normalized",
-    "gold_standard",
-    "correct",
-    "error_type",
-    "deviation",
-    "t_real_ms",
-    "t_sim_ms",
+    # Event + Encounter common
+    "patient_id", "tool_id", "scenario_type", "is_practice", 
+    # Event specific
+    "event_type", "action_key", "decision_raw", "user_tag_normalized", 
+    "reference_tag_normalized", "deviation", "t_real_ms", "t_sim_ms",
+    # Encounter specific
+    "patient_sequence_order", "Time_to_First_Action", "Time_to_Tag", 
+    "Time_to_Hemorrhage_Ctrl", "Time_to_Airway_Ctrl", "Dwell_rr", "Dwell_pulse_rad", 
+    "Dwell_Measurable", "Seq_Error_Count", "Seq_Error_Measurable", "LSI_Applicable", 
+    "Required_LSI", "Missed_LSI_Flag", "Missing_LSI_List", "Error_Class",
+    # TLX
+    "nasa_mental", "nasa_temporal", "nasa_effort", "nasa_frustration", "nasa_performance",
+    "nasa_physical",
+    # Post
+    "post_understanding", "post_preparedness", "post_tool_effective",
+    # Session End
+    "n_encounters_total", "n_practice_encounters", "n_real_encounters", 
+    "n_decisions_made", "mean_time_to_tag_ms", "critical_under_rate",
+    # Health Counters
+    "total_ledger_rows", "total_event_rows", "total_encounter_rows", 
+    "total_tlx_rows", "total_post_rows"
 ]
+
+def safe_str(x):
+    """Returns empty string for NA/None, else string version."""
+    if x is None or pd.isna(x) or str(x).strip() == "NA" or str(x).strip() == "nan":
+        return ""
+    return str(x)
+
+def append_ledger_row(row_data):
+    """Writes a single row to the session's ledger CSV."""
+    if "log_filepath" not in st.session_state or not st.session_state.log_filepath:
+        return
+        
+    # 1) Increment global ledger row index
+    if "ledger_row_index" not in st.session_state:
+        st.session_state.ledger_row_index = 0
+    st.session_state.ledger_row_index += 1
+    
+    rtype = row_data.get("record_type", "unknown")
+    
+    # 2) Increment specific row counters
+    counter_key = f"total_{rtype}_rows"
+    if counter_key not in st.session_state:
+        st.session_state[counter_key] = 0
+    st.session_state[counter_key] += 1
+    
+    st.session_state.total_ledger_rows = st.session_state.get("total_ledger_rows", 0) + 1
+    
+    # 3) Prevent carry-over bugs: Build a fresh dictionary mapped cleanly to LEDGER_COLUMNS
+    fresh_row = {col: "" for col in LEDGER_COLUMNS}
+    
+    # Populate the relevant keys
+    for k, v in row_data.items():
+        if k in fresh_row:
+            fresh_row[k] = safe_str(v)
+            
+    # Always write ledger row index and completion_code
+    fresh_row["ledger_row_index"] = str(st.session_state.ledger_row_index)
+    
+    if st.session_state.get("completion_code"):
+        fresh_row["completion_code"] = safe_str(st.session_state.completion_code)
+    
+    filepath = st.session_state.log_filepath
+    header = not os.path.exists(filepath)
+    with open(filepath, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=LEDGER_COLUMNS)
+        if header:
+            writer.writeheader()
+        writer.writerow(fresh_row)
+        f.flush()
 
 def _session_state_path(session_id):
     return os.path.join("data_out", f"session_{session_id}.json")
@@ -87,6 +142,7 @@ def save_session_state():
         "version": SESSION_STATE_VERSION,
         "session_id": st.session_state.session_id,
         "session_timestamp": st.session_state.get("session_timestamp"),
+        "block_start_time": _dt_to_iso(st.session_state.get("block_start_time")),
         "content_pack_hash": st.session_state.get("content_pack_hash"),
         "app_version": st.session_state.get("app_version"),
         "participant_role": st.session_state.get("participant_role"),
@@ -113,6 +169,15 @@ def save_session_state():
         "washout_animation_done": st.session_state.get("washout_animation_done", False),
         "washout_logged": st.session_state.get("washout_logged", False),
         "log_filepath": st.session_state.get("log_filepath"),
+        "encounter_events": st.session_state.get("encounter_events", []),
+        "completed_encounters": st.session_state.get("completed_encounters", []),
+        "completion_code": st.session_state.get("completion_code", ""),
+        "ledger_row_index": st.session_state.get("ledger_row_index", 0),
+        "total_ledger_rows": st.session_state.get("total_ledger_rows", 0),
+        "total_event_rows": st.session_state.get("total_event_rows", 0),
+        "total_encounter_rows": st.session_state.get("total_encounter_rows", 0),
+        "total_tlx_rows": st.session_state.get("total_tlx_rows", 0),
+        "total_post_rows": st.session_state.get("total_post_rows", 0),
     }
 
     os.makedirs("data_out", exist_ok=True)
@@ -149,6 +214,7 @@ def try_resume_session(content_pack, content_hash):
 
     st.session_state.session_id = payload.get("session_id", session_id)
     st.session_state.session_timestamp = payload.get("session_timestamp")
+    st.session_state.block_start_time = _dt_from_iso(payload.get("block_start_time"))
     st.session_state.content_pack_hash = content_hash
     st.session_state.app_version = payload.get("app_version", APP_VERSION)
     st.session_state.content_pack = content_pack
@@ -187,6 +253,15 @@ def try_resume_session(content_pack, content_hash):
     st.session_state.post_perception_done = payload.get("post_perception_done", False)
     st.session_state.washout_animation_done = payload.get("washout_animation_done", False)
     st.session_state.washout_logged = payload.get("washout_logged", False)
+    st.session_state.encounter_events = payload.get("encounter_events", [])
+    st.session_state.completed_encounters = payload.get("completed_encounters", [])
+    st.session_state.completion_code = payload.get("completion_code", "")
+    st.session_state.ledger_row_index = payload.get("ledger_row_index", 0)
+    st.session_state.total_ledger_rows = payload.get("total_ledger_rows", 0)
+    st.session_state.total_event_rows = payload.get("total_event_rows", 0)
+    st.session_state.total_encounter_rows = payload.get("total_encounter_rows", 0)
+    st.session_state.total_tlx_rows = payload.get("total_tlx_rows", 0)
+    st.session_state.total_post_rows = payload.get("total_post_rows", 0)
 
     st.session_state.log_filepath = payload.get("log_filepath")
     if not st.session_state.log_filepath:
@@ -204,6 +279,7 @@ def initialize_session(content_pack, content_hash):
         st.session_state.session_id = str(uuid.uuid4())
         st.session_state.content_pack_hash = content_hash
         st.session_state.app_version = APP_VERSION
+        st.session_state.block_start_time = datetime.now()
         st.session_state.content_pack = content_pack
         st.session_state.patient_map = build_patient_map()
 
@@ -219,6 +295,15 @@ def initialize_session(content_pack, content_hash):
         st.session_state.card_start_time = None
         st.session_state.revealed_actions = set()
         st.session_state.accumulated_cost_ms = 0
+        st.session_state.encounter_events = []
+        st.session_state.completed_encounters = []
+        st.session_state.completion_code = ""
+        st.session_state.ledger_row_index = 0
+        st.session_state.total_ledger_rows = 0
+        st.session_state.total_event_rows = 0
+        st.session_state.total_encounter_rows = 0
+        st.session_state.total_tlx_rows = 0
+        st.session_state.total_post_rows = 0
 
         # Washout State
         st.session_state.washout_active = False
@@ -232,7 +317,7 @@ def initialize_session(content_pack, content_hash):
         # Ensure data_out directory exists
         os.makedirs("data_out", exist_ok=True)
 
-        st.session_state.log_filepath = f"data_out/logs_{st.session_state.session_id}_{timestamp}.csv"
+        st.session_state.log_filepath = f"data_out/session_{st.session_state.session_id}_{timestamp}.csv"
         save_session_state()
 
 def get_gold_standard(patient, tool_id):
@@ -318,7 +403,186 @@ def calculate_deviation(gold_std, selected):
         
     return val_sel - val_gold
 
-def log_event(event_type, action_key=None, decision_raw=None, decision_normalized=None, notes=None):
+def evaluate_outcome_class(user_tag, gold_tag):
+    if user_tag in ["Black", "Dead", "Expectant"] or gold_tag in ["Black", "Dead", "Expectant"]:
+        return "NA_Black"
+    
+    mapping = {
+        "Green": 1, "Yellow": 2, "Red": 3, "P1": 3, "P2": 2, "P3": 1, "Blue": 1, "White": 1
+    }
+    val_user = mapping.get(user_tag, None)
+    val_gold = mapping.get(gold_tag, None)
+    
+    if val_user is None or val_gold is None:
+        return ""
+        
+    diff = val_user - val_gold
+    if diff == 0:
+        return "None"
+    elif diff == 1:
+        return "Minor_Over"
+    elif diff >= 2:
+        return "Major_Over"
+    elif diff == -1:
+        return "Minor_Under"
+    elif diff <= -2:
+        return "Critical_Under"
+    
+    return ""
+
+def finalize_encounter_log(patient, tool_id):
+    events = st.session_state.get("encounter_events", [])
+    if not events:
+        return
+        
+    target_events = [e for e in events if e.get("event_type") in ["reveal", "decision"]]
+    first_action_ms = target_events[0]["t_real_ms"] if target_events else ""
+
+    decision_events = [e for e in target_events if e.get("event_type") == "decision"]
+    time_to_tag = decision_events[-1]["t_real_ms"] if decision_events else ""
+        
+    hem_events = [e for e in target_events if e.get("action_key") == "hemorrhage_ctrl"]
+    t_hemorrhage = hem_events[0]["t_real_ms"] if hem_events else ""
+        
+    airway_events = [e for e in target_events if e.get("action_key") == "airway_man"]
+    t_airway = airway_events[0]["t_real_ms"] if airway_events else ""
+        
+    dwell_rr, dwell_pulse = "", ""
+    dwell_measurable = True
+    
+    for i, e in enumerate(target_events):
+        if e.get("action_key") == "rr" and dwell_rr == "":
+            if i + 1 < len(target_events):
+                dwell_rr = target_events[i+1]["t_real_ms"] - e["t_real_ms"]
+            else:
+                dwell_measurable = False
+        elif e.get("action_key") == "pulse_rad" and dwell_pulse == "":
+            if i + 1 < len(target_events):
+                dwell_pulse = target_events[i+1]["t_real_ms"] - e["t_real_ms"]
+            else:
+                dwell_measurable = False
+
+    seq_error_count = 0
+    seq_error_measurable = True
+    max_order_seen = 0
+    
+    order_col = f"{tool_id}_Order"
+    config_df = st.session_state.content_pack.get("Config")
+    
+    if config_df is not None and order_col in config_df.columns:
+        order_map = {}
+        for _, row in config_df.iterrows():
+            key = row.get("Action_Key")
+            order_val = row.get(order_col)
+            if pd.notna(key) and pd.notna(order_val):
+                try:
+                    order_map[key] = int(float(order_val))
+                except (ValueError, TypeError):
+                    pass
+        
+        for e in target_events:
+            k = e.get("action_key")
+            o = order_map.get(k, 0)
+            if o > 0:
+                if o < max_order_seen:
+                    seq_error_count += 1
+                else:
+                    max_order_seen = o
+    else:
+        seq_error_measurable = False
+        seq_error_count = ""
+        
+    decision_event = decision_events[-1] if decision_events else None
+    decision_normalized = decision_event.get("decision_normalized", "") if decision_event else ""
+    gold_standard = get_gold_standard(patient, tool_id)
+    
+    error_class = evaluate_outcome_class(decision_normalized, gold_standard)
+    
+    lsi_app_raw = patient.get("LSI_Applicable", False)
+    lsi_applicable = True if str(lsi_app_raw).strip().upper() == "TRUE" or lsi_app_raw is True else False
+    
+    req_lsi_raw = patient.get("Required_LSI", "")
+    
+    missed_lsi_flag = ""
+    missing_lsi_list = ""
+    
+    if not lsi_applicable:
+        pass # Stays ""
+    else:
+        if decision_normalized == "Red":
+            req_keys = []
+            if pd.notna(req_lsi_raw):
+                req_keys = [k.strip().lower() for k in str(req_lsi_raw).split(",") if k.strip()]
+                
+            clicked_keys = set([str(e.get("action_key")).lower() for e in target_events if e.get("action_key")])
+            
+            missed = [k for k in req_keys if k not in clicked_keys]
+            if missed:
+                missed_lsi_flag = "True"
+                missing_lsi_list = ",".join(missed)
+            else:
+                missed_lsi_flag = "False"
+        else:
+            missed_lsi_flag = ""
+
+    now = datetime.now()
+    if st.session_state.get("block_start_time"):
+        t_run_ms = int((now - st.session_state.block_start_time).total_seconds() * 1000)
+    else:
+        t_run_ms = 0
+
+    row = {
+        "t_run_ms": t_run_ms,
+        "session_id": st.session_state.session_id,
+        "completion_code": st.session_state.get("completion_code", ""),
+        "record_type": "encounter",
+        "schema_version": SCHEMA_VERSION,
+        "app_version": st.session_state.app_version,
+        "content_pack_hash": st.session_state.content_pack_hash,
+        "participant_role": st.session_state.get("participant_role", ""),
+        "prior_triage_training": st.session_state.get("prior_triage_training", ""),
+        "fatigue_status": st.session_state.get("fatigue_status", ""),
+        
+        "patient_id": patient.get("ID", ""),
+        "tool_id": tool_id,
+        "scenario_type": patient.get("Scenario", ""),
+        "is_practice": patient.get("Is_Practice", False),
+        "patient_sequence_order": st.session_state.get("current_patient_index", 0) + 1,
+        
+        "Time_to_First_Action": first_action_ms,
+        "Time_to_Tag": time_to_tag,
+        "Time_to_Hemorrhage_Ctrl": t_hemorrhage,
+        "Time_to_Airway_Ctrl": t_airway,
+        
+        "Dwell_rr": dwell_rr,
+        "Dwell_pulse_rad": dwell_pulse,
+        "Dwell_Measurable": dwell_measurable,
+        
+        "Seq_Error_Count": seq_error_count,
+        "Seq_Error_Measurable": seq_error_measurable,
+        
+        "Unassigned_Actions": "",
+        "Unassigned_Actions_Measurable": False,
+        
+        "LSI_Applicable": lsi_applicable,
+        "Required_LSI": req_lsi_raw if pd.notna(req_lsi_raw) else "",
+        "Missed_LSI_Flag": missed_lsi_flag,
+        "Missing_LSI_List": missing_lsi_list,
+        
+        "Error_Class": error_class
+    }
+    
+    if "completed_encounters" not in st.session_state:
+        st.session_state.completed_encounters = []
+    
+    # Also include the user tag and reference tag for final session aggregation lookup
+    row["User_Tag"] = decision_normalized
+    row["Reference_Tag"] = gold_standard
+    st.session_state.completed_encounters.append(row)
+    
+    append_ledger_row(row)
+
+def log_event(event_type, action_key=None, decision_raw=None, decision_normalized=None):
     """Logs an event to the CSV file and optionally to Google Sheets."""
     if "log_filepath" not in st.session_state:
         return # Should not happen
@@ -351,67 +615,57 @@ def log_event(event_type, action_key=None, decision_raw=None, decision_normalize
         t_sim_ms = t_real_ms + st.session_state.accumulated_cost_ms
 
     # Grading & Metrics
-    is_correct = ""
     deviation = ""
-    error_type = ""
     
     if event_type == "decision" and gold_standard != "NA" and decision_normalized:
-        # Correctness
-        is_correct = 1 if (gold_standard == decision_normalized) else 0
-        
         # Deviation
         dev_val = calculate_deviation(gold_standard, decision_normalized)
         deviation = dev_val if dev_val is not None else "ERR"
 
-        if deviation == 0:
-            error_type = "correct"
-        elif deviation is not None and deviation > 0:
-            error_type = "overtriage"
-        elif deviation is not None and deviation < 0:
-            error_type = "undertriage"
+    if st.session_state.get("block_start_time"):
+        t_run_ms = int((now - st.session_state.block_start_time).total_seconds() * 1000)
+    else:
+        t_run_ms = 0
 
     row = {
-        "timestamp_utc": now.isoformat(),
+        "t_run_ms": t_run_ms,
+        "session_id": st.session_state.session_id,
+        "completion_code": st.session_state.get("completion_code", ""),
+        "record_type": "event",
+        "schema_version": SCHEMA_VERSION,
         "app_version": st.session_state.app_version,
         "content_pack_hash": st.session_state.content_pack_hash,
-        "session_id": st.session_state.session_id,
         "participant_role": st.session_state.get("participant_role", "NA"),
-        "prior_triage_training": st.session_state.get("prior_triage_training", "NA"),
         "fatigue_status": st.session_state.get("fatigue_status", "NA"),
-        "consent_given": st.session_state.get("consent_given", False),
+        "prior_triage_training": st.session_state.get("prior_triage_training", "NA"),
+        
+        "patient_id": patient_id,
         "tool_id": tool_id,
         "scenario_type": scenario_type,
-        "patient_id": patient_id,
-        "patient_sequence_order": st.session_state.get("current_patient_index", 0) + 1 if patient else "",
+        "is_practice": patient.get("Is_Practice", False) if patient else False,
+        
         "event_type": event_type,
         "action_key": action_key if action_key else "",
         "decision_raw": decision_raw if decision_raw else "",
-        "decision_normalized": decision_normalized if decision_normalized else "",
-        "gold_standard": gold_standard,
-        "correct": is_correct,
-        "error_type": error_type,
+        "user_tag_normalized": decision_normalized if decision_normalized else "",
+        "reference_tag_normalized": gold_standard,
         "deviation": deviation, 
         "t_real_ms": t_real_ms,
         "t_sim_ms": t_sim_ms,
     }
 
-    # New Columns Requirement: 
-    # participant_code (session_id), profession (participant_role), triage_system_id (tool_id), 
-    # scenario_id (scenario_type), start/end (timestamp implies end, card_start implies start)
+    if "encounter_events" not in st.session_state:
+        st.session_state.encounter_events = []
     
-    header = not os.path.exists(st.session_state.log_filepath)
-    
-    # Update LOG_COLUMNS dynamically if needed, 
-    # but better to keep the global constant aligned.
-    # We need to update the global LOG_COLUMNS variable too.
-    
-    with open(st.session_state.log_filepath, "a", newline="", encoding="utf-8") as f:
-        # Note: We must ensure LOG_COLUMNS matches the row keys
-        writer = csv.DictWriter(f, fieldnames=LOG_COLUMNS)
-        if header:
-            writer.writeheader()
-        writer.writerow(row)
-        f.flush()
+    # Store legacy key 'decision_normalized' internally for `finalize_encounter_log` to parse easily
+    internal_row = dict(row)
+    internal_row["decision_normalized"] = decision_normalized if decision_normalized else ""
+    st.session_state.encounter_events.append(internal_row)
+
+    append_ledger_row(row)
+
+    if event_type == "decision" and patient:
+        finalize_encounter_log(patient, tool_id)
 
     # Log to Google Sheets if in Mode C and this is a triage decision
     if event_type == "decision" and st.session_state.get("data_mode") == "Mode C":
@@ -419,81 +673,149 @@ def log_event(event_type, action_key=None, decision_raw=None, decision_normalize
         if active_sheet:
             from src import cloud
             triage_cat = decision_normalized if decision_normalized else decision_raw
-            clinician_notes = notes if notes else ""
             cloud.append_triage_log(
                 active_sheet,
-                [now.isoformat(), patient_id, triage_cat, clinician_notes]
+                [now.isoformat(), patient_id, triage_cat]
             )
 
 def log_nasa_tlx(data):
-    """Logs NASA-TLX results to a separate CSV."""
-    filepath = "data_out/nasa_tlx_logs.csv"
-    
-    # We need to capture context: Session, Role, Tool, Scenario (Just Finished)
-    # The 'current' patient index points to the NEXT patient (usually). 
-    # But NASA-TLX happens *between* scenarios. 
-    # We need to know which scenario just finished. 
-    # Ideally, we stored `completed_scenario_id` in session state or we infer it.
-    # For now, let's use the `scenario_type` from the *previous* patient if possible, 
-    # or rely on `washout_pending_scenario` logic from app.py.
-    
-    # Actually, simpler: app.py triggers this when `prev_patient["Scenario"] != curr_patient["Scenario"]`.
-    # So the scenario we just finished is `prev_patient["Scenario"]`.
-    # But engine.py doesn't have easy access to app.py variables.
-    # We can pass the scenario name in `data` or infer it.
-    
-    # Let's assume the caller (component) might not know it easily.
-    # Better: Use `st.session_state.get('last_finished_scenario', 'Unknown')`
-    
+    """Logs NASA-TLX results to the session ledger."""
     scenario = st.session_state.get('last_finished_scenario', 'Unknown')
     
+    now = datetime.now()
+    if st.session_state.get("block_start_time"):
+        t_run_ms = int((now - st.session_state.block_start_time).total_seconds() * 1000)
+    else:
+        t_run_ms = 0
+
     row = {
-        "timestamp_utc": datetime.now().isoformat(),
+        "t_run_ms": t_run_ms,
         "session_id": st.session_state.session_id,
+        "completion_code": st.session_state.get("completion_code", ""),
+        "record_type": "tlx",
+        "schema_version": SCHEMA_VERSION,
+        "app_version": st.session_state.app_version,
+        "content_pack_hash": st.session_state.content_pack_hash,
         "participant_role": st.session_state.get("participant_role", "NA"),
+        "fatigue_status": st.session_state.get("fatigue_status", "NA"),
+        "prior_triage_training": st.session_state.get("prior_triage_training", "NA"),
         "tool_id": st.session_state.get("tool_id", "NA"),
         "scenario_type": scenario,
         **data
     }
     
-    columns = [
-        "timestamp_utc", "session_id", "participant_role", "tool_id", "scenario_type",
-        "nasa_mental", "nasa_physical", "nasa_temporal", "nasa_performance", 
-        "nasa_effort", "nasa_frustration", "nasa_raw_score", "comments"
-    ]
-    
-    header = not os.path.exists(filepath)
-    with open(filepath, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=columns)
-        if header:
-            writer.writeheader()
-        writer.writerow(row)
-        f.flush()
+    append_ledger_row(row)
 
 def log_post_perception(data):
-    """Logs post-simulation perception results to a separate CSV."""
-    filepath = "data_out/post_perception_logs.csv"
-    
+    """Logs post-simulation perception results to the session ledger."""
+    now = datetime.now()
+    if st.session_state.get("block_start_time"):
+        t_run_ms = int((now - st.session_state.block_start_time).total_seconds() * 1000)
+    else:
+        t_run_ms = 0
+
     row = {
-        "timestamp_utc": datetime.now().isoformat(),
+        "t_run_ms": t_run_ms,
         "session_id": st.session_state.session_id,
+        "completion_code": st.session_state.get("completion_code", ""),
+        "record_type": "post",
+        "schema_version": SCHEMA_VERSION,
+        "app_version": st.session_state.app_version,
+        "content_pack_hash": st.session_state.content_pack_hash,
         "participant_role": st.session_state.get("participant_role", "NA"),
+        "fatigue_status": st.session_state.get("fatigue_status", "NA"),
+        "prior_triage_training": st.session_state.get("prior_triage_training", "NA"),
         "tool_id": st.session_state.get("tool_id", "NA"),
         **data
     }
     
-    columns = [
-        "timestamp_utc", "session_id", "participant_role", "tool_id", 
-        "post_understanding", "post_preparedness", "post_tool_effective"
-    ]
+    append_ledger_row(row)
+
+def log_session_end():
+    """Calculates final session metrics, generates completion code, and writes session index."""
+    encounters = st.session_state.get("completed_encounters", [])
+    n_total = len(encounters)
+    practice_encs = [e for e in encounters if str(e.get("is_practice")).strip().lower() == "true"]
+    real_encs = [e for e in encounters if str(e.get("is_practice")).strip().lower() != "true"]
     
-    header = not os.path.exists(filepath)
-    with open(filepath, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=columns)
+    n_practice = len(practice_encs)
+    n_real = len(real_encs)
+    
+    tag_times = []
+    for e in real_encs:
+        try:
+            val = float(e.get("Time_to_Tag"))
+            tag_times.append(val)
+        except (ValueError, TypeError):
+            pass
+            
+    mean_time = sum(tag_times) / len(tag_times) if tag_times else ""
+    
+    crit_under = len([e for e in real_encs if e.get("Error_Class") == "Critical_Under"])
+    cu_rate = (crit_under / n_real) if n_real > 0 else ""
+    
+    timestamp_end = datetime.now()
+    timestamp_str = st.session_state.get("session_timestamp", "0000")
+    comp_code = f"{st.session_state.session_id[-6:]}_{timestamp_str[-4:]}"
+    st.session_state.completion_code = comp_code
+
+    if st.session_state.get("block_start_time"):
+        t_run_ms = int((timestamp_end - st.session_state.block_start_time).total_seconds() * 1000)
+    else:
+        t_run_ms = 0
+
+    row = {
+        "t_run_ms": t_run_ms,
+        "session_id": st.session_state.session_id,
+        "completion_code": comp_code,
+        "record_type": "session_end",
+        "schema_version": SCHEMA_VERSION,
+        "app_version": st.session_state.app_version,
+        "content_pack_hash": st.session_state.content_pack_hash,
+        "participant_role": st.session_state.get("participant_role", ""),
+        "fatigue_status": st.session_state.get("fatigue_status", ""),
+        "prior_triage_training": st.session_state.get("prior_triage_training", ""),
+        
+        "n_encounters_total": n_total,
+        "n_practice_encounters": n_practice,
+        "n_real_encounters": n_real,
+        "n_decisions_made": n_total,
+        "mean_time_to_tag_ms": mean_time,
+        "critical_under_rate": cu_rate,
+        
+        "total_ledger_rows": st.session_state.get("total_ledger_rows", 0) + 1, # +1 for this row about to fall in
+        "total_event_rows": st.session_state.get("total_event_rows", 0),
+        "total_encounter_rows": st.session_state.get("total_encounter_rows", 0),
+        "total_tlx_rows": st.session_state.get("total_tlx_rows", 0),
+        "total_post_rows": st.session_state.get("total_post_rows", 0)
+    }
+    append_ledger_row(row)
+    
+    idx_row = {
+        "timestamp_utc": timestamp_end.isoformat(),
+        "session_id": st.session_state.session_id,
+        "completion_code": comp_code,
+        "participant_role": st.session_state.get("participant_role", ""),
+        "fatigue_status": st.session_state.get("fatigue_status", ""),
+        "prior_triage_training": st.session_state.get("prior_triage_training", ""),
+        "app_version": st.session_state.app_version,
+        "schema_version": SCHEMA_VERSION,
+        "content_pack_hash": st.session_state.content_pack_hash,
+        "n_real_encounters": n_real,
+        "critical_under_rate": safe_str(cu_rate)
+    }
+    
+    idx_path = "data_out/session_index.csv"
+    idx_cols = list(idx_row.keys())
+    header = not os.path.exists(idx_path)
+    with open(idx_path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=idx_cols)
         if header:
             writer.writeheader()
-        writer.writerow(row)
+        writer.writerow(idx_row)
         f.flush()
+
+    save_session_state()
 
 def generate_patient_queue():
     """Generates the patient queue from the content pack."""
@@ -558,5 +880,6 @@ def start_new_patient():
     st.session_state.card_start_time = datetime.now()
     st.session_state.revealed_actions = set() # Reset revealed actions
     st.session_state.accumulated_cost_ms = 0
+    st.session_state.encounter_events = []
     st.session_state.last_decision = None
     st.session_state.pending_triage = None

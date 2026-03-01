@@ -6,8 +6,8 @@ A Streamlit-based research app that simulates mass-casualty triage under "fog of
 
 ## Highlights
 - **Fog of War**: Clinical findings are hidden until "purchased" with simulated time.
-- **Inline Action Grid**: Categorized assessment actions (A-B-C-D-E) are integrated into a compact, responsive grid.
-- **Sticky Sidebar**: Patient information and clinical findings remain visible while scrolling through actions.
+- **Inline Header Action Grid**: Categorized assessment actions (A-B-C-D-E) are integrated into a compact, responsive grid. Category labels are built directly into the button layout.
+- **Sticky Sidebar**: Patient information and clinical findings remain visible while scrolling through actions. The UI uses symmetrical, equal-height cards and a fixed right-hand floating bar for triage decisions.
 - **Excel-Driven Engine**: Fully configurable scenarios, actions, and tools via `study_content_pack.xlsx`.
 - **Washout Period**: Enforced 40-second breaks between scenario blocks featuring guided box breathing to reset cognitive load.
 - **Session Resume**: Append-only logging with unique session IDs and URL-based resume (`?sid=...`).
@@ -73,12 +73,12 @@ Optional columns:
 2. **Practice**: Practice patients to familiarize the user with the interface (results are not logged).
 3. **Scenarios**: Blocks of test patients presented in randomized order.
 4. **Washout**: A 40-second mandatory box-breathing break between blocks.
-5. **Post-Simulation**: Post-scenario feedback sliders.
+5. **Post-Simulation**: Participants complete 5 modified NASA-TLX cognitive load sliders, followed by 3 post-perception evaluation sliders.
 6. **Completion**: Generates a unique completion code.
 
 ## Data Outputs
 - **CSV Log**: `data_out/logs_{session_id}_{timestamp}.csv`
-  - Captures every click (reveal, hide, decision) with real time (`t_real_ms`) and simulated time (`t_sim_ms`).
+  - Captures every click (reveal, hide, decision) with real time (`t_real_ms`) and simulated time (`t_sim_ms`). It also logs performance deviations (`error_type`) compared against standard consensus values.
 - **Session State**: `data_out/session_{session_id}.json`
   - JSON dump for resuming interrupted sessions.
 

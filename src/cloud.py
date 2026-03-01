@@ -79,8 +79,8 @@ def append_triage_log(sheet_name, data_row):
     except gspread.exceptions.WorksheetNotFound:
         # Create it if it doesn't exist
         try:
-            worksheet = spreadsheet.add_worksheet(title="Triage_Logs", rows="1000", cols="4")
-            header = ["Timestamp", "PatientID", "TriageCategory", "ClinicianNotes"]
+            worksheet = spreadsheet.add_worksheet(title="Triage_Logs", rows="1000", cols="3")
+            header = ["Timestamp", "PatientID", "TriageCategory"]
             worksheet.append_row(header)
         except Exception as create_err:
             print(f"Failed to create Triage_Logs tab: {create_err}")

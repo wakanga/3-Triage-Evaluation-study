@@ -182,7 +182,31 @@ def main():
 
     # 4. Phase 1: Onboarding
     if not st.session_state.onboarding_complete:
-        st.title("STEP: Onboarding")
+        if not st.session_state.get("splash_viewed", False):
+            ph = st.empty()
+            ph.markdown("""
+            <style>
+            @keyframes fadeInOut {
+                0% { opacity: 0; }
+                15% { opacity: 1; }
+                85% { opacity: 1; }
+                100% { opacity: 0; }
+            }
+            .splash {
+                text-align: center;
+                margin-top: 30vh;
+                animation: fadeInOut 4.5s forwards;
+            }
+            </style>
+            <div class="splash">
+                <h1 style="font-size: 3.5em; margin-bottom: 0; line-height: 1.2;">Welcome to the Standardised Triage Evaluation Platform (STEP)</h1>
+            </div>
+            """, unsafe_allow_html=True)
+            time.sleep(4.8)
+            ph.empty()
+            st.session_state.splash_viewed = True
+
+        st.title("Onboarding")
 
 
         with st.form("onboarding_form"):
@@ -288,6 +312,8 @@ def main():
         st.warning("All subsequent cases will be timed and logged for analysis. Please treat them as a real scenario.")
         if st.button("Start Simulation", type="primary"):
             st.session_state.practice_transition_active = False
+            from datetime import datetime
+            st.session_state.block_start_time = datetime.now()
             engine.start_new_patient() 
             engine.save_session_state()
             st.rerun()
@@ -354,15 +380,15 @@ def main():
                         "post_tool_effective": post_tool,
                     }
                     engine.log_post_perception(data)
-                    engine.save_session_state()
+                    engine.log_session_end()
+                    # save_session_state is called inside log_session_end
                     st.rerun()
             return
 
         st.balloons()
         st.success("Thank you for your participation.")
 
-        timestamp = st.session_state.get("session_timestamp", "0000")
-        code = f"{st.session_state.session_id[-6:]}_{timestamp[-4:]}"
+        code = st.session_state.get("completion_code", "UNKNOWN")
         st.subheader(f"Completion Code: {code}")
         st.info("Please record this code.")
 

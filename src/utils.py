@@ -41,7 +41,7 @@ def validate_content_pack(sheets):
     if not required_tools_cols.issubset(sheets["Tools"].columns):
         st.error(f"Tools tab missing columns. Required: {required_tools_cols}")
         st.stop()
-    allowed_colors = {"Red", "Yellow", "Green", "Black", "White", "Blue", "Orange"}
+    allowed_colors = {"Red", "Yellow", "Green", "Black", "White", "Blue", "Orange", "Silver", "Grey"}
     tool_colors = set(sheets["Tools"]["Normalized_Value"].dropna().unique())
     invalid_colors = tool_colors - allowed_colors
     if invalid_colors:

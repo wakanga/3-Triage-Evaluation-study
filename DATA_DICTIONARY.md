@@ -38,7 +38,7 @@ The master list of distinct simulated patients and their clinical findings. Over
 | `ID` | Unique patient identifier (e.g., `ent_01`). |
 | `Patient_Name` | UI Display Name. |
 | `Scenario` | Overarching event (e.g., `Entrapment`). Groups patients together. |
-| `Is_Practice` | Flags cases as practice (e.g. `TRUE`). Excludes them from scoring/analysis. |
+| `Is_Practice` | Flags cases as practice (e.g. `TRUE`). Excludes them from scoring/analysis. Validation also accepts variants like `Is_Tutorial` or `Is_Training`. |
 | `Visible_Text` | The initial vignette shown to the user automatically. |
 | `Avatar_File` | Image filename in `assets/img`. |
 
