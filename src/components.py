@@ -217,6 +217,12 @@ def _render_inline_action(row, patient):
 def render_triage_tools(tools_df, tool_id):
     """Renders the triage decision buttons in a compact grid."""
     
+    revealed = st.session_state.get("revealed_actions", set())
+    disable_triage = len(revealed) == 0
+    
+    if disable_triage:
+        st.info("Assess the patient below to unlock triage decisions.")
+
     # Filter tools by the selected Tool_ID
     my_tools = tools_df[tools_df["Tool_ID"] == tool_id]
 
@@ -244,7 +250,7 @@ def render_triage_tools(tools_df, tool_id):
         
         # Alternate columns
         with cols[i % 2]:
-            if st.button(btn_label, key=f"decision_{i}", use_container_width=True):
+            if st.button(btn_label, key=f"decision_{i}", use_container_width=True, disabled=disable_triage):
                 # Log decision
                 log_event(event_type="decision", action_key="triage_decision",
                           decision_raw=label, decision_normalized=normalized)

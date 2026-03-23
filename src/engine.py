@@ -388,11 +388,11 @@ def calculate_deviation(gold_std, selected):
     """
     
     mapping = {
-        "Black": 0, "Dead": 0,
+        "Black": 0, "Dead": 0, "White": 0,
         "Green": 1, 
         "Yellow": 2,
         "Red": 3,
-        "Blue": 1, "White": 1
+        "Blue": 1
     }
     
     val_gold = mapping.get(gold_std, -100)
@@ -404,11 +404,11 @@ def calculate_deviation(gold_std, selected):
     return val_sel - val_gold
 
 def evaluate_outcome_class(user_tag, gold_tag):
-    if user_tag in ["Black", "Dead", "Expectant"] or gold_tag in ["Black", "Dead", "Expectant"]:
+    if user_tag in ["Black", "Dead", "Expectant", "White"] or gold_tag in ["Black", "Dead", "Expectant", "White"]:
         return "NA_Black"
     
     mapping = {
-        "Green": 1, "Yellow": 2, "Red": 3, "P1": 3, "P2": 2, "P3": 1, "Blue": 1, "White": 1
+        "Green": 1, "Yellow": 2, "Red": 3, "P1": 3, "P2": 2, "P3": 1, "Blue": 1, "White": 0
     }
     val_user = mapping.get(user_tag, None)
     val_gold = mapping.get(gold_tag, None)
