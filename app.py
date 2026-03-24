@@ -130,6 +130,7 @@ def main():
         prev_idx = st.session_state.current_patient_index
         st.session_state.current_patient_index += 1
         curr_idx = st.session_state.current_patient_index
+        st.session_state.can_go_back = True
 
         queue = st.session_state.patient_queue
 
@@ -145,6 +146,7 @@ def main():
             if prev_patient.get("Is_Practice", False) and not curr_patient.get("Is_Practice", False):
                 # Trigger Practice Transition Screen
                 st.session_state.practice_transition_active = True
+                st.session_state.can_go_back = False
                 # Reset any accumulated session-level practice data if needed
                 st.session_state.card_start_time = None
                 engine.save_session_state()
@@ -164,6 +166,7 @@ def main():
                 
                     # THEN PREPARE WASHOUT
                     st.session_state.washout_active = True
+                    st.session_state.can_go_back = False
                     st.session_state.washout_start_time = datetime.now()
                     st.session_state.card_start_time = None
                     st.session_state.accumulated_cost_ms = 0
@@ -213,7 +216,7 @@ def main():
             role = st.selectbox("Role", ["-- Click here --", "Paramedic", "Nurse", "Doctor", "Police", "Fire/Rescue", "Student/Other"])
             years = st.selectbox("Years Experience", ["-- Click here --", "0-2 years", "2-5 years", "5-10 years", "10+ years"])
             fatigue = st.selectbox("Fatigue Status", ["-- Click here --", "On Shift (Currently working)", "Off Shift (<12 hours since last shift)", "Rested (>12 hours since last shift)"])
-            prior_triage = st.selectbox("Prior Triage Training", ["-- Click here --", "None", "MIMMS", "Hospital Triage Only", "TST Training", "SMART Training", "Other"])
+            prior_triage = st.selectbox("Prior Triage Training", ["-- Click here --", "None", "Hospital Triage Only", "TST Training", "SMART Training", "Other"])
             tool_id = st.selectbox("Assigned Tool", ["-- Click here --", "SMART", "TST"])
 
             st.markdown("### Pre-Simulation Readiness")
@@ -312,7 +315,6 @@ def main():
         st.warning("All subsequent cases will be timed and logged for analysis. Please treat them as a real scenario.")
         if st.button("Start Simulation", type="primary"):
             st.session_state.practice_transition_active = False
-            from datetime import datetime
             st.session_state.block_start_time = datetime.now()
             engine.start_new_patient() 
             engine.save_session_state()
@@ -324,8 +326,18 @@ def main():
 
     if patient:
         # Header
-        st.progress((st.session_state.current_patient_index) / len(st.session_state.patient_queue))
-        st.caption(f"Patient {st.session_state.current_patient_index + 1} / {len(st.session_state.patient_queue)}")
+        col1_h, col2_h = st.columns([0.85, 0.15])
+        with col1_h:
+            st.progress((st.session_state.current_patient_index) / len(st.session_state.patient_queue))
+            st.caption(f"Patient {st.session_state.current_patient_index + 1} / {len(st.session_state.patient_queue)}")
+        with col2_h:
+            if st.session_state.current_patient_index > 0 and st.session_state.get("can_go_back", False):
+                if st.button("⬅️ Go Back", use_container_width=True):
+                    st.session_state.current_patient_index -= 1
+                    st.session_state.can_go_back = False
+                    st.session_state.last_decision = None
+                    engine.start_new_patient()
+                    st.rerun()
 
         if "header_sticky" not in st.session_state:
             st.session_state.header_sticky = False

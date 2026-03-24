@@ -37,15 +37,15 @@ def validate_content_pack(sheets):
         st.stop()
 
     # 2. Validate Tools Tab
-    required_tools_cols = {"Tool_ID", "Button_Label", "Normalized_Value"}
+    required_tools_cols = {"Tool_ID", "Button_Label", "Colour"}
     if not required_tools_cols.issubset(sheets["Tools"].columns):
         st.error(f"Tools tab missing columns. Required: {required_tools_cols}")
         st.stop()
     allowed_colors = {"Red", "Yellow", "Green", "Black", "White", "Blue", "Orange", "Silver", "Grey"}
-    tool_colors = set(sheets["Tools"]["Normalized_Value"].dropna().unique())
+    tool_colors = set(sheets["Tools"]["Colour"].dropna().unique())
     invalid_colors = tool_colors - allowed_colors
     if invalid_colors:
-        st.error(f"Tools tab has invalid Normalized_Value entries: {invalid_colors}. Allowed: {allowed_colors}")
+        st.error(f"Tools tab has invalid Colour entries: {invalid_colors}. Allowed: {allowed_colors}")
         st.stop()
 
     # 3. Validate Patients Tab

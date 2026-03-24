@@ -134,56 +134,64 @@ def render_action_buttons(patient, config_df):
     tool_id = st.session_state.get("tool_id", "SMART")
     valid_actions = config_df[config_df['Valid_Tools'].str.contains(tool_id, na=False)]
 
-    labels = {
-        'A': 'Airway', 
-        'B': 'Breathing', 
-        'C': 'Circulation', 
-        'D': 'Disability', 
-        'E': 'Exposure & History'
+    tst_mapping = {
+        "WALKING": ["walk"],
+        "SEVERE BLEEDING": ["hemorrhage", "hemorrhage_ctrl"],
+        "TALKING": ["talking"],
+        "AIRWAY/BREATHING": ["airway_obs", "airway_man", "recovery_pos"],
+        "PENETRATING INJURY": ["deadly_box"]
+    }
+    
+    smart_mapping = {
+        "WALKING": ["walk"],
+        "INJURED": ["injured"],
+        "BREATHING": ["airway_obs"],
+        "OPEN AIRWAY": ["airway_man"],
+        "RESPIRATORY RATE": ["rr"],
+        "PULSE": ["pulse_rad", "pulse_rate"]
     }
 
-    # Consolidated Container for the Grid
+    mapping = tst_mapping if tool_id == "TST" else smart_mapping
+
     with st.container():
-        # Split into 3 columns
         col1, col2, col3 = st.columns(3, gap="small")
+        headers = list(mapping.keys())
         
-        # Define Cat -> Col mapping
-        # Col 1: A, B
-        # Col 2: C
-        # Col 3: D, E
-        col_map = {
-            'A': col1, 'B': col1,
-            'C': col2, 
-            'D': col3, 'E': col3
-        }
-        
-        for cat in ['A', 'B', 'C', 'D', 'E']:
-            cat_actions = valid_actions[valid_actions['Category'] == cat]
+        for i, header_name in enumerate(headers):
+            if i % 3 == 0:
+                col = col1
+            elif i % 3 == 1:
+                col = col2
+            else:
+                col = col3
+                
+            action_keys = mapping[header_name]
             
-            # --- pre-calculate visible buttons ---
+            cat_actions = pd.DataFrame()
+            for key in action_keys:
+                match = valid_actions[valid_actions['Action_Key'] == key]
+                if not match.empty:
+                    cat_actions = pd.concat([cat_actions, match])
+            
+            if cat_actions.empty:
+                continue
+
             visible_buttons = []
-            
             for _, row in cat_actions.iterrows():
                 key = row['Action_Key']
                 text_col = f"{key}_Text"
                 raw_result = str(patient.get(text_col, ""))
                 
-                if key not in ["airway_man", "hemorrhage_ctrl"]:
+                if key not in ["airway_man", "hemorrhage_ctrl", "recovery_pos"]:
                     if "not applicable" in raw_result.lower():
-                        continue
-                elif key == "airway_man":
-                    airway_result = str(patient.get("airway_obs_Text", ""))
-                    if "clear" in airway_result.lower():
                         continue
                 visible_buttons.append(row)
 
             if not visible_buttons:
                 continue
 
-            # Render in the assigned column
-            with col_map[cat]:
-                # Apply specific class based on category
-                st.markdown(f"<div class='category-header cat-header-{cat}'>{labels[cat]}</div>", unsafe_allow_html=True)
+            with col:
+                st.markdown(f"<div class='category-header cat-header-{['A','B','C','D','E','A'][i % 6]}'>{header_name}</div>", unsafe_allow_html=True)
                 for _, row in pd.DataFrame(visible_buttons).iterrows():
                     _render_inline_action(row, patient)
 
@@ -216,12 +224,6 @@ def _render_inline_action(row, patient):
 
 def render_triage_tools(tools_df, tool_id):
     """Renders the triage decision buttons in a compact grid."""
-    
-    revealed = st.session_state.get("revealed_actions", set())
-    disable_triage = len(revealed) == 0
-    
-    if disable_triage:
-        st.info("Assess the patient below to unlock triage decisions.")
 
     # Filter tools by the selected Tool_ID
     my_tools = tools_df[tools_df["Tool_ID"] == tool_id]
@@ -239,7 +241,7 @@ def render_triage_tools(tools_df, tool_id):
 
     for i, (_, row) in enumerate(my_tools.iterrows()):
         label = row['Button_Label']
-        normalized = row['Normalized_Value']
+        normalized = row['Colour']
         
         # Remove emojis, use simple label string
         btn_label = str(label).strip()
@@ -250,7 +252,7 @@ def render_triage_tools(tools_df, tool_id):
         
         # Alternate columns
         with cols[i % 2]:
-            if st.button(btn_label, key=f"decision_{i}", use_container_width=True, disabled=disable_triage):
+            if st.button(btn_label, key=f"decision_{i}", use_container_width=True):
                 # Log decision
                 log_event(event_type="decision", action_key="triage_decision",
                           decision_raw=label, decision_normalized=normalized)
